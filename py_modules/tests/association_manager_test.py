@@ -189,6 +189,24 @@ class TestAssociationManager(AbstractDatabaseTest):
         self.assertIsNotNone(result)
         self.assertEqual(result.code, "PARENT_NOT_FOUND")
 
+    def test_create_association_rejects_dictionary_only_zero_time_identities(self):
+        self.dao.save_game_dict("zero-parent", "Zero Parent")
+        self.dao.save_game_dict("zero-child", "Zero Child")
+        self._create_game("timed-parent", "Timed Parent")
+        self._create_game("timed-child", "Timed Child")
+
+        parent_error = self.association_manager.create_association(
+            "zero-parent", "timed-child"
+        )
+        child_error = self.association_manager.create_association(
+            "timed-parent", "zero-child"
+        )
+
+        self.assertIsNotNone(parent_error)
+        self.assertEqual(parent_error.code, "PARENT_NOT_FOUND")
+        self.assertIsNotNone(child_error)
+        self.assertEqual(child_error.code, "CHILD_NOT_FOUND")
+
     def test_create_association_child_not_found_error(self):
         """Test error when child game doesn't exist."""
         self._create_game("parent_game", "Parent Game")

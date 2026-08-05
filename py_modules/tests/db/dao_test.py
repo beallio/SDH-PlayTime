@@ -129,6 +129,49 @@ class TestDao(AbstractDatabaseTest):
                 ("Renamed Zero Parent", 1),
             )
 
+    def test_confirmation_updates_nullable_zero_time_parent_name_without_overall_time(
+        self,
+    ):
+        self.dao.save_game_dict("tracked-child", "Tracked Child")
+        with closing(sqlite3.connect(self.database_file)) as connection:
+            connection.execute(
+                "INSERT INTO game_dict (game_id, name) VALUES (?, ?)",
+                ("zero-parent", None),
+            )
+            connection.commit()
+
+        snapshot = self.dao.get_game_association_component("tracked-child")
+        confirmation = self.dao.confirm_game_association_component(
+            AssociationComponentConfirmationRequest(
+                anchor_game_id=snapshot.anchor_game_id,
+                proposed_parent_game_id="zero-parent",
+                proposed_parent_game_name="Selected Zero Parent",
+                expected_parent_game_id=snapshot.expected_parent_game_id,
+                expected_fingerprint=snapshot.fingerprint,
+                selected_members=(
+                    AssociationComponentMember("tracked-child", "Tracked Child"),
+                    AssociationComponentMember("zero-parent", "Selected Zero Parent"),
+                ),
+            )
+        )
+
+        self.assertEqual(confirmation.confirmed_parent.name, "Selected Zero Parent")
+        with closing(sqlite3.connect(self.database_file)) as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT name, COUNT(*) FROM game_dict WHERE game_id = ?",
+                    ("zero-parent",),
+                ).fetchone(),
+                ("Selected Zero Parent", 1),
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT COUNT(*) FROM overall_time WHERE game_id = ?",
+                    ("zero-parent",),
+                ).fetchone(),
+                (0,),
+            )
+
     def test_grouped_association_read_has_sorted_members_and_fingerprint(self):
         self._create_checksum_star()
 

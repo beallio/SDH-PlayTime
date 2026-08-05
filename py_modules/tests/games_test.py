@@ -37,6 +37,17 @@ class TestGames(AbstractDatabaseTest):
 
         self.assertIn("Parent game does not exist", str(context.exception))
 
+    def test_link_game_to_game_with_checksum_rejects_zero_time_parent(self):
+        self.dao.save_game_dict("zero_parent", "Zero Parent")
+        self.dao.save_game_checksum(
+            "zero_parent", "parent-checksum", "SHA256", 1, None, None
+        )
+
+        with self.assertRaises(ValueError) as context:
+            self.games.link_game_to_game_with_checksum("alias_game", "zero_parent")
+
+        self.assertIn("Parent game does not exist", str(context.exception))
+
     def test_checksum_rpc_hides_explicitly_associated_children(self):
         self.dao.save_game_dict("parent", "Parent")
         self.dao.save_game_dict("child", "Child")

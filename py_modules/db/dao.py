@@ -379,7 +379,7 @@ class Dao:
                 INSERT INTO game_dict (game_id, name)
                 VALUES (:game_id, :game_name)
                 ON CONFLICT (game_id) DO UPDATE SET name = :game_name
-                WHERE name != :game_name
+                WHERE name IS NOT :game_name
                 """,
             {"game_id": game_id, "game_name": game_name},
         )
@@ -1102,6 +1102,24 @@ class Dao:
     def get_game(self, game_id: str) -> GameInformationDto | None:
         with self._db.transactional() as connection:
             return self._get_game(connection, game_id)
+
+    def get_game_with_overall_time(self, game_id: str) -> GameInformationDto | None:
+        """Read a game only when it has the legacy required overall-time record."""
+
+        with self._db.transactional() as connection:
+            connection.row_factory = _row_to_game_info_dto
+            return connection.execute(
+                """
+                SELECT
+                    gd.game_id,
+                    gd.name,
+                    ot.duration AS time
+                FROM game_dict gd
+                INNER JOIN overall_time ot ON gd.game_id = ot.game_id
+                WHERE gd.game_id = ?
+                """,
+                (game_id,),
+            ).fetchone()
 
     def get_games(self, game_ids: Collection[str]) -> Dict[str, GameInformationDto]:
         """Fetch dictionary and total-time records for a set of game IDs at once."""
