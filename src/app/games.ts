@@ -1,4 +1,4 @@
-import { toaster } from "@decky/api";
+import { toaster } from "@src/utils/deckyApi";
 import {
 	$gameChecksumsLoadingState,
 	$generatingChecksumForAppWithIndex,

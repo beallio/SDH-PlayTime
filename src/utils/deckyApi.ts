@@ -1,4 +1,4 @@
-import type { RouterHook, Toaster } from "@decky/api";
+import type { RouterHook, ToastData, ToastNotification, Toaster } from "@decky/api";
 import * as deckyApi from "@decky/api";
 import { error } from "@src/utils/logger";
 
@@ -24,4 +24,15 @@ const maybeRouterHook = ((): RouterHook | undefined => {
 
 export const routerHook = maybeRouterHook ?? FALLBACK_ROUTER_HOOK;
 
-export const toaster = (deckyApi as { toaster: Toaster }).toaster;
+const FALLBACK_TOASTER: Toaster = {
+	toast: (_toast: ToastData): ToastNotification => {
+		return {
+			data: _toast,
+			dismiss: () => {},
+		};
+	},
+};
+
+const maybeToaster = (deckyApi as { toaster?: Toaster }).toaster;
+
+export const toaster = maybeToaster ?? FALLBACK_TOASTER;

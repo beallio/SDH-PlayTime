@@ -51,6 +51,16 @@ mock.module("@decky/api", () => ({
 	toaster: { toast: () => {} },
 }));
 
+mock.module("@src/utils/deckyApi", () => ({
+	routerHook: {
+		addPatch: (_path: string, patch: (props: RouteProps) => void) => {
+			patchCallback = patch;
+		},
+		removePatch: () => {},
+	},
+	toaster: { toast: () => {} },
+}));
+
 mock.module("@decky/ui", () => ({
 	afterPatch: (
 		obj: Record<string, (...args: unknown[]) => unknown>,
