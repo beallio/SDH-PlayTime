@@ -1,6 +1,7 @@
 import os
 import stat
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from py_modules.game_resolution import (
     MountEntry,
     MAX_RESOLUTION_BATCH_SIZE,
 )
+from py_modules.game_resolution.models import ResolutionRequest, ResolutionResult
 
 
 def direct_entry(path: str, **overrides: object) -> dict[str, object]:
@@ -55,7 +57,11 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
             self.root / "WindowsGame.exe",
         ]
         for payload in payloads:
-            payload.touch()
+            payload.write_bytes(
+                b"MZ" if payload.suffix.casefold() == ".exe" else b"\x7fELF"
+            )
+        for payload in payloads[:2]:
+            payload.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
         result = coordinator.resolve_batch(
             [direct_entry(str(path)) for path in payloads]
@@ -78,7 +84,7 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
     def test_resolves_a_safe_symlink_to_its_actual_payload(self) -> None:
         target = self.root / "Games" / "Game.exe"
         target.parent.mkdir()
-        target.touch()
+        target.write_bytes(b"MZ")
         link = self.root / "GameLink.exe"
         link.symlink_to(target)
 
@@ -117,6 +123,42 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
 
         self.assertEqual(shell_result.reason_code, "malformed")
         self.assertEqual(traversal_result.reason_code, "malformed")
+
+    def test_rejects_backend_shell_syntax_and_data_files_before_probing(self) -> None:
+        def unexpected_stat(_: Path) -> os.stat_result:
+            self.fail("untrusted non-payload candidates must not reach the probe")
+
+        coordinator = self.coordinator(FilesystemProbe(stat_func=unexpected_stat))
+        malformed_paths = (
+            "/games/%GAME%.exe",
+            "/games/@(Game.exe)",
+            "/games/+(Game.exe)",
+            "/games/!(Game.exe)",
+            "/games/Game.exe; /usr/bin/id",
+        )
+        for path in malformed_paths:
+            with self.subTest(path=path):
+                result = coordinator.resolve_batch([direct_entry(path)]).results[0]
+                self.assertEqual(result.payload_status, "unknown")
+                self.assertEqual(result.reason_code, "malformed")
+
+        data_file = coordinator.resolve_batch(
+            [direct_entry("/games/notes.txt")]
+        ).results[0]
+        self.assertEqual(data_file.payload_status, "unknown")
+        self.assertEqual(data_file.reason_code, "unsupported")
+
+    def test_rejects_renamed_data_files_without_executable_format_evidence(
+        self,
+    ) -> None:
+        data_file = self.root / "notes.exe"
+        data_file.write_text("plain text, not a Windows executable")
+
+        result = self.coordinator().resolve_batch([direct_entry(str(data_file))])
+        item = result.results[0]
+
+        self.assertEqual(item.payload_status, "unknown")
+        self.assertEqual(item.reason_code, "unsupported")
 
     def test_rejects_flatpak_claims_that_try_to_pose_as_direct_payloads(self) -> None:
         def unexpected_stat(_: Path) -> os.stat_result:
@@ -184,6 +226,9 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
         self.assertEqual(mismatch.reason_code, "kind_mismatch")
         self.assertEqual(permission.reason_code, "permission_denied")
         self.assertEqual(failure.reason_code, "probe_failure")
+        self.assertEqual(mismatch.payload_status, "unreachable")
+        self.assertEqual(permission.payload_status, "unknown")
+        self.assertEqual(failure.payload_status, "unknown")
 
     def test_distinguishes_disconnected_volume_from_missing_payload_on_a_mount(
         self,
@@ -207,6 +252,40 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
 
         self.assertEqual(disconnected.reason_code, "drive_disconnected")
         self.assertEqual(missing.reason_code, "payload_missing")
+        self.assertEqual(disconnected.payload_status, "unreachable")
+        self.assertEqual(missing.payload_status, "unreachable")
+
+    def test_broken_symlink_preserves_disconnected_volume_evidence(self) -> None:
+        target = Path("/run/media/deck/SDCARD/Games/Game.exe")
+        link = self.root / "Game.exe"
+        link.symlink_to(target)
+
+        result = (
+            self.coordinator(FilesystemProbe(mount_entries=lambda: ()))
+            .resolve_batch([direct_entry(str(link))])
+            .results[0]
+        )
+
+        self.assertEqual(result.payload_status, "unreachable")
+        self.assertEqual(result.reason_code, "drive_disconnected")
+
+    def test_revalidates_resolved_symlink_targets_against_wrapper_policy(self) -> None:
+        for target_name in ("wine", "proton", "Heroic.AppImage", "Game.sh"):
+            with self.subTest(target_name=target_name):
+                target = self.root / target_name
+                target.touch()
+                target.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+                link = self.root / f"Game-{target_name}.exe"
+                link.symlink_to(target)
+
+                result = (
+                    self.coordinator()
+                    .resolve_batch([direct_entry(str(link))])
+                    .results[0]
+                )
+
+                self.assertEqual(result.payload_status, "unknown")
+                self.assertEqual(result.reason_code, "unsupported")
 
     def test_unknown_launchers_and_non_list_batches_are_structured_unknown_results(
         self,
@@ -246,10 +325,53 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
             [item.reason_code for item in ordered.results],
             ["payload_missing", "unsupported"],
         )
+        self.assertEqual(ordered.results[0].payload_status, "unreachable")
+
+    def test_deadlines_and_exceptions_are_isolated_per_entry(self) -> None:
+        release = threading.Event()
+
+        class FaultInjectingAdapter:
+            launcher_kind = "direct"
+
+            def resolve(self, request: ResolutionRequest) -> ResolutionResult:
+                candidate = request.normalized.shortcut_exe
+                if candidate == "/games/Slow.exe":
+                    release.wait()
+                if candidate == "/games/Broken.exe":
+                    raise RuntimeError("simulated resolver failure")
+                assert candidate is not None
+                return ResolutionResult.reachable(request, candidate)
+
+        coordinator = GameResolutionCoordinator(
+            adapters=[FaultInjectingAdapter()],
+            entry_timeout_seconds=0.01,
+            batch_timeout_seconds=0.1,
+        )
+        try:
+            result = coordinator.resolve_batch(
+                [
+                    direct_entry("/games/Slow.exe"),
+                    direct_entry("/games/Broken.exe"),
+                    direct_entry("/games/Working.exe"),
+                ]
+            )
+        finally:
+            release.set()
+
+        self.assertIsNone(result.error)
+        self.assertEqual(len(result.results), 3)
+        self.assertEqual(
+            [item.reason_code for item in result.results],
+            ["timeout", "probe_failure", None],
+        )
+        self.assertEqual(
+            [item.payload_status for item in result.results],
+            ["unknown", "unknown", "reachable"],
+        )
 
     def test_mount_probe_uses_expected_kind_not_mode_bits(self) -> None:
         payload = self.root / "WindowsGame.exe"
-        payload.touch()
+        payload.write_bytes(b"MZ")
         payload.chmod(stat.S_IRUSR | stat.S_IWUSR)
 
         result = (

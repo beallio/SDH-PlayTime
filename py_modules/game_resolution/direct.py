@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
+import stat
 from pathlib import Path
+from typing import Literal
 
 from .filesystem import FilesystemProbe
 from .models import (
@@ -65,8 +67,10 @@ _KNOWN_EMULATOR_STEMS = frozenset(
         "ryujinx",
     }
 )
-_UNSAFE_LITERAL_CHARACTERS = frozenset("$`?*[]{}|&;<>")
+_UNSAFE_LITERAL_CHARACTERS = frozenset("?*[]{}|&;<>")
 _WRAPPER_SUFFIXES = (".desktop", ".py", ".sh")
+_NATIVE_SUFFIXES = frozenset({".x86", ".x86_64"})
+DirectPayloadType = Literal["windows", "appimage", "native"]
 
 
 def _basename(path: str) -> str:
@@ -118,11 +122,39 @@ def _parse_single_literal_path(value: str | None) -> str:
     if (
         not candidate
         or not candidate.startswith("/")
+        or "$" in candidate
+        or "`" in candidate
         or any(character in _UNSAFE_LITERAL_CHARACTERS for character in candidate)
-        or "!+(" in candidate
+        or re.search(r"%[a-z][a-z0-9_]*%", candidate, re.IGNORECASE) is not None
+        or re.search(r"[!+@]\(", candidate) is not None
     ):
         raise RequestValidationError("malformed")
     return candidate
+
+
+def _direct_payload_type(path: str) -> DirectPayloadType | None:
+    suffix = Path(path).suffix.casefold()
+    if suffix == ".exe":
+        return "windows"
+    if suffix == ".appimage":
+        return "appimage"
+    if not suffix or suffix in _NATIVE_SUFFIXES:
+        return "native"
+    return None
+
+
+def _has_direct_payload_evidence(
+    payload_type: DirectPayloadType,
+    file_mode: int | None,
+    file_header: bytes | None,
+) -> bool:
+    if payload_type == "windows":
+        return file_header is not None and file_header.startswith(b"MZ")
+    return (
+        file_mode is not None
+        and bool(file_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
+        and file_header == b"\x7fELF"
+    )
 
 
 class DirectExecutableAdapter:
@@ -148,18 +180,37 @@ class DirectExecutableAdapter:
                 request.classification_status,
                 error.reason_code,
             )
-        if _is_known_shared_or_launcher(candidate) or self._is_wrapper_path(candidate):
+        if self._is_rejected_path(candidate) or _direct_payload_type(candidate) is None:
             return ResolutionResult.unknown(
                 request.launcher_kind, request.classification_status, "unsupported"
             )
         probe_result = self._probe.probe_regular_file(Path(candidate))
         if probe_result.reason_code is not None:
+            if probe_result.reason_code in {
+                "drive_disconnected",
+                "kind_mismatch",
+                "payload_missing",
+            }:
+                return ResolutionResult.unreachable(request, probe_result.reason_code)
             return ResolutionResult.unknown(
                 request.launcher_kind,
                 request.classification_status,
                 probe_result.reason_code,
             )
         assert probe_result.payload_path is not None
+        if self._is_rejected_path(probe_result.payload_path):
+            return ResolutionResult.unknown(
+                request.launcher_kind, request.classification_status, "unsupported"
+            )
+        payload_type = _direct_payload_type(probe_result.payload_path)
+        if payload_type is None or not _has_direct_payload_evidence(
+            payload_type,
+            probe_result.file_mode,
+            probe_result.file_header,
+        ):
+            return ResolutionResult.unknown(
+                request.launcher_kind, request.classification_status, "unsupported"
+            )
         return ResolutionResult.reachable(request, probe_result.payload_path)
 
     @staticmethod
@@ -184,10 +235,11 @@ class DirectExecutableAdapter:
         return candidate
 
     @staticmethod
-    def _is_wrapper_path(candidate: str) -> bool:
+    def _is_rejected_path(candidate: str) -> bool:
         lowercase = candidate.casefold()
         return (
-            lowercase.startswith(
+            _is_known_shared_or_launcher(candidate)
+            or lowercase.startswith(
                 ("/app/bin/", "/bin/", "/sbin/", "/usr/bin/", "/usr/local/bin/")
             )
             or "/emulation/tools/launchers/" in lowercase

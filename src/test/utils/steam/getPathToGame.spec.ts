@@ -79,17 +79,57 @@ describe("getPathToGame compatibility", () => {
 		]);
 	});
 
-	test("does not return a direct shortcut target when filesystem evidence reports a symlink", async () => {
+	for (const executable of [
+		"/home/deck/Games/NativeGame",
+		"/home/deck/Games/Space Game.AppImage",
+	]) {
+		test(`sends safe direct candidates to the backend proof boundary: ${executable}`, async () => {
+			setShortcutDetails({
+				strShortcutExe: executable.includes(" ") ? `"${executable}"` : executable,
+			});
+			callHandler = async () => ({
+				results: [
+					{
+						launcherKind: "direct",
+						classificationStatus: "recognized",
+						metadataStatus: "not_requested",
+						payloadStatus: "reachable",
+						payloadKind: "file",
+						provenance: "direct_executable",
+						reasonCode: null,
+						payloadPath: executable,
+					},
+				],
+				error: null,
+			});
+
+			await expect(getPathToGame(1)).resolves.toBe(executable);
+			expect(calls).toHaveLength(1);
+		});
+	}
+
+	test("does not return a direct shortcut target when backend evidence rejects it", async () => {
 		setShortcutDetails({
 			strShortcutExe: '"/run/media/deck/SD Card/Games/Game.exe"',
 		});
+		callHandler = async () => ({
+			results: [
+				{
+					launcherKind: "direct",
+					classificationStatus: "recognized",
+					metadataStatus: "not_requested",
+					payloadStatus: "unknown",
+					payloadKind: "unknown",
+					provenance: "untrusted_hint",
+					reasonCode: "unsupported",
+					payloadPath: null,
+				},
+			],
+			error: null,
+		});
 
-		await expect(
-			getPathToGame(1, async () => ({
-				isRegularFile: true,
-				isSymbolicLink: true,
-			})),
-		).resolves.toBeUndefined();
+		await expect(getPathToGame(1)).resolves.toBeUndefined();
+		expect(calls).toHaveLength(1);
 	});
 
 	test("does not return a shared Wine launcher to the checksum caller", async () => {
@@ -107,16 +147,20 @@ describe("getPathToGame compatibility", () => {
 	]) {
 		test(`does not resolve a separator-suffixed shared tool: ${executable}`, async () => {
 			setShortcutDetails({ strShortcutExe: executable });
-			let resolverCalled = false;
 
-			await expect(
-				getPathToGame(1, async () => {
-					resolverCalled = true;
-					return { isRegularFile: true, isSymbolicLink: false };
-				}),
-			).resolves.toBeUndefined();
+			await expect(getPathToGame(1)).resolves.toBeUndefined();
 
-			expect(resolverCalled).toBeFalse();
+			expect(calls).toHaveLength(0);
 		});
 	}
+
+	test("never returns an unsupported EmuDeck ROM path to a checksum caller", async () => {
+		setShortcutDetails({
+			strShortcutExe: "/home/deck/Emulation/tools/launchers/retroarch.sh",
+			strShortcutLaunchOptions: '"/home/deck/ROMs/Chrono Trigger.smc"',
+		});
+
+		await expect(getPathToGame(1)).resolves.toBeUndefined();
+		expect(calls).toHaveLength(0);
+	});
 });

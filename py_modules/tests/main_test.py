@@ -811,7 +811,7 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
         plugin = self.main.Plugin()
         with tempfile.TemporaryDirectory() as directory:
             payload = Path(directory) / "Game.exe"
-            payload.touch()
+            payload.write_bytes(b"MZ")
             request = {
                 "launcherKind": "direct",
                 "classificationStatus": "recognized",
@@ -850,6 +850,45 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
 
         malformed = await plugin.resolve_game_payloads([request] * 33)
         self.assertEqual(malformed, {"results": [], "error": "malformed"})
+
+    async def test_game_resolution_rpc_preserves_entry_cardinality_on_failure(self):
+        plugin = self.main.Plugin()
+        entries = [{"malformed": True}, {"malformed": True}]
+        with patch.object(
+            plugin.game_resolution_coordinator,
+            "resolve_batch",
+            side_effect=RuntimeError("simulated unexpected failure"),
+        ):
+            response = await plugin.resolve_game_payloads(entries)
+
+        self.assertEqual(
+            response,
+            {
+                "results": [
+                    {
+                        "launcherKind": "unknown",
+                        "classificationStatus": "unknown",
+                        "metadataStatus": "not_requested",
+                        "payloadStatus": "unknown",
+                        "payloadKind": "unknown",
+                        "provenance": "untrusted_hint",
+                        "reasonCode": "probe_failure",
+                        "payloadPath": None,
+                    },
+                    {
+                        "launcherKind": "unknown",
+                        "classificationStatus": "unknown",
+                        "metadataStatus": "not_requested",
+                        "payloadStatus": "unknown",
+                        "payloadKind": "unknown",
+                        "provenance": "untrusted_hint",
+                        "reasonCode": "probe_failure",
+                        "payloadPath": None,
+                    },
+                ],
+                "error": None,
+            },
+        )
 
 
 if __name__ == "__main__":

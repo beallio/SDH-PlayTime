@@ -48,18 +48,6 @@ interface ShortcutEvidenceClassification {
 	payloadPath?: string;
 }
 
-interface DirectPayloadFilesystemEvidence {
-	isRegularFile: boolean;
-	isSymbolicLink: boolean;
-}
-
-type DirectPayloadResolver = (
-	candidatePath: string,
-) =>
-	| DirectPayloadFilesystemEvidence
-	| undefined
-	| Promise<DirectPayloadFilesystemEvidence | undefined>;
-
 type GameResolutionLauncherKind = ShortcutLauncherKind;
 
 type GameResolutionClassificationStatus = ShortcutClassificationStatus;
@@ -72,7 +60,7 @@ type GameResolutionMetadataStatus =
 	| "resolved"
 	| "invalid";
 
-type GameResolutionPayloadStatus = "reachable" | "unknown";
+type GameResolutionPayloadStatus = "reachable" | "unreachable" | "unknown";
 
 type GameResolutionPayloadKind = "file" | "directory" | "unknown";
 
@@ -90,7 +78,8 @@ type GameResolutionReasonCode =
 	| "drive_disconnected"
 	| "payload_missing"
 	| "kind_mismatch"
-	| "probe_failure";
+	| "probe_failure"
+	| "timeout";
 
 interface GameResolutionRequest {
 	launcherKind: GameResolutionLauncherKind;

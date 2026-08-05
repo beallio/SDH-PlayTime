@@ -25,7 +25,11 @@ add_plugin_to_path()
 # ruff: noqa: E402
 from py_modules.db.dao import Dao
 from py_modules.files import Files
-from py_modules.game_resolution import GameResolutionCoordinator
+from py_modules.game_resolution import (
+    GameResolutionCoordinator,
+    MAX_RESOLUTION_BATCH_SIZE,
+)
+from py_modules.game_resolution.models import BatchResolutionResult, ResolutionResult
 from py_modules.games import Games
 from py_modules.helpers import parse_date
 from py_modules.statistics import Statistics
@@ -346,6 +350,14 @@ class Plugin:
                 "[resolve_game_payloads] Resolver failed without processing a payload: %s",
                 type(error).__name__,
             )
+            if isinstance(entries, list) and len(entries) <= MAX_RESOLUTION_BATCH_SIZE:
+                fallback = BatchResolutionResult(
+                    tuple(
+                        ResolutionResult.unknown(reason_code="probe_failure")
+                        for _ in entries
+                    )
+                )
+                return convert_keys_to_camel_case(fallback.to_dict())
             return {"results": [], "error": "probe_failure"}
 
     async def get_games_dictionary(self):

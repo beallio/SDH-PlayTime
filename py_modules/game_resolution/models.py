@@ -15,7 +15,7 @@ LauncherKind = Literal[
 ]
 ClassificationStatus = Literal["recognized", "unknown", "ambiguous"]
 MetadataStatus = Literal["not_requested", "not_found", "resolved", "invalid"]
-PayloadStatus = Literal["reachable", "unknown"]
+PayloadStatus = Literal["reachable", "unreachable", "unknown"]
 PayloadKind = Literal["file", "directory", "unknown"]
 Provenance = Literal["direct_executable", "untrusted_hint", "none"]
 ReasonCode = Literal[
@@ -28,6 +28,7 @@ ReasonCode = Literal[
     "payload_missing",
     "kind_mismatch",
     "probe_failure",
+    "timeout",
 ]
 
 _LAUNCHER_KINDS = frozenset(
@@ -188,6 +189,21 @@ class ResolutionResult:
             provenance="direct_executable",
             reason_code=None,
             payload_path=payload_path,
+        )
+
+    @classmethod
+    def unreachable(
+        cls, request: ResolutionRequest, reason_code: ReasonCode
+    ) -> "ResolutionResult":
+        return cls(
+            launcher_kind=request.launcher_kind,
+            classification_status=request.classification_status,
+            metadata_status="not_requested",
+            payload_status="unreachable",
+            payload_kind="unknown",
+            provenance="direct_executable",
+            reason_code=reason_code,
+            payload_path=None,
         )
 
     def to_dict(self) -> dict[str, object]:
