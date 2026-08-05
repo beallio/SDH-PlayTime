@@ -807,6 +807,50 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
                 },
             )
 
+    async def test_game_resolution_rpc_returns_bounded_camel_case_results(self):
+        plugin = self.main.Plugin()
+        with tempfile.TemporaryDirectory() as directory:
+            payload = Path(directory) / "Game.exe"
+            payload.touch()
+            request = {
+                "launcherKind": "direct",
+                "classificationStatus": "recognized",
+                "normalized": {
+                    "flatpakAppId": None,
+                    "shortcutExe": str(payload),
+                    "shortcutLaunchOptions": None,
+                    "shortcutStartDir": None,
+                    "executableTokens": [str(payload)],
+                    "launchOptionTokens": [],
+                    "startDirTokens": [],
+                    "commandTokens": [str(payload)],
+                },
+                "metadataCandidates": [],
+            }
+            response = await plugin.resolve_game_payloads([request])
+
+        self.assertEqual(
+            response,
+            {
+                "results": [
+                    {
+                        "launcherKind": "direct",
+                        "classificationStatus": "recognized",
+                        "metadataStatus": "not_requested",
+                        "payloadStatus": "reachable",
+                        "payloadKind": "file",
+                        "provenance": "direct_executable",
+                        "reasonCode": None,
+                        "payloadPath": str(payload),
+                    }
+                ],
+                "error": None,
+            },
+        )
+
+        malformed = await plugin.resolve_game_payloads([request] * 33)
+        self.assertEqual(malformed, {"results": [], "error": "malformed"})
+
 
 if __name__ == "__main__":
     unittest.main()

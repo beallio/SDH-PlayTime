@@ -60,6 +60,61 @@ type DirectPayloadResolver = (
 	| undefined
 	| Promise<DirectPayloadFilesystemEvidence | undefined>;
 
+type GameResolutionLauncherKind = ShortcutLauncherKind;
+
+type GameResolutionClassificationStatus = ShortcutClassificationStatus;
+
+type GameResolutionNormalizedShortcutEvidence = NormalizedShortcutFields;
+
+type GameResolutionMetadataStatus =
+	| "not_requested"
+	| "not_found"
+	| "resolved"
+	| "invalid";
+
+type GameResolutionPayloadStatus = "reachable" | "unknown";
+
+type GameResolutionPayloadKind = "file" | "directory" | "unknown";
+
+type GameResolutionProvenance =
+	| "direct_executable"
+	| "untrusted_hint"
+	| "none";
+
+type GameResolutionReasonCode =
+	| "missing"
+	| "ambiguous"
+	| "unsupported"
+	| "permission_denied"
+	| "malformed"
+	| "drive_disconnected"
+	| "payload_missing"
+	| "kind_mismatch"
+	| "probe_failure";
+
+interface GameResolutionRequest {
+	launcherKind: GameResolutionLauncherKind;
+	classificationStatus: GameResolutionClassificationStatus;
+	normalized: GameResolutionNormalizedShortcutEvidence;
+	metadataCandidates: string[];
+}
+
+interface GameResolutionResult {
+	launcherKind: GameResolutionLauncherKind;
+	classificationStatus: GameResolutionClassificationStatus;
+	metadataStatus: GameResolutionMetadataStatus;
+	payloadStatus: GameResolutionPayloadStatus;
+	payloadKind: GameResolutionPayloadKind;
+	provenance: GameResolutionProvenance;
+	reasonCode: GameResolutionReasonCode | null;
+	payloadPath: string | null;
+}
+
+interface GameResolutionBatchResponse {
+	results: GameResolutionResult[];
+	error: GameResolutionReasonCode | null;
+}
+
 type AppDetailsFailureReason =
 	| "unsupported-runtime"
 	| "registration-error"

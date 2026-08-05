@@ -1,5 +1,16 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { getPathToGame } from "@src/steam/utils/GamePaths";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+
+const calls: unknown[][] = [];
+let callHandler: (...args: unknown[]) => Promise<unknown>;
+
+mock.module("@decky/api", () => ({
+	call: async (...args: unknown[]) => {
+		calls.push(args);
+		return await callHandler(...args);
+	},
+}));
+
+const { getPathToGame } = await import("@src/steam/utils/GamePaths");
 
 type TestSteamClient = {
 	Apps: {
@@ -18,6 +29,11 @@ afterEach(() => {
 	delete steamGlobal.SteamClient;
 });
 
+beforeEach(() => {
+	calls.length = 0;
+	callHandler = async () => ({ results: [], error: null });
+});
+
 function setShortcutDetails(shortcut: ShortcutEvidenceInput) {
 	steamGlobal.SteamClient = {
 		Apps: {
@@ -30,19 +46,37 @@ function setShortcutDetails(shortcut: ShortcutEvidenceInput) {
 }
 
 describe("getPathToGame compatibility", () => {
-	test("requires injected regular-file evidence before returning a direct target", async () => {
+	test("uses a backend-verified regular direct payload before returning it", async () => {
 		setShortcutDetails({
 			strShortcutExe: '"/run/media/deck/SD Card/Games/Game.exe"',
 		});
+		callHandler = async () => ({
+			results: [
+				{
+					launcherKind: "direct",
+					classificationStatus: "recognized",
+					metadataStatus: "not_requested",
+					payloadStatus: "reachable",
+					payloadKind: "file",
+					provenance: "direct_executable",
+					reasonCode: null,
+					payloadPath: "/run/media/deck/SD Card/Games/Game.exe",
+				},
+			],
+			error: null,
+		});
 
-		await expect(getPathToGame(1)).resolves.toBeUndefined();
-
-		await expect(
-			getPathToGame(1, async (candidatePath) => {
-				expect(candidatePath).toBe("/run/media/deck/SD Card/Games/Game.exe");
-				return { isRegularFile: true, isSymbolicLink: false };
+		await expect(getPathToGame(1)).resolves.toBe(
+			"/run/media/deck/SD Card/Games/Game.exe",
+		);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]?.[1]).toEqual([
+			expect.objectContaining({
+				launcherKind: "direct",
+				classificationStatus: "recognized",
+				metadataCandidates: [],
 			}),
-		).resolves.toBe("/run/media/deck/SD Card/Games/Game.exe");
+		]);
 	});
 
 	test("does not return a direct shortcut target when filesystem evidence reports a symlink", async () => {

@@ -1,4 +1,5 @@
 import getAppDetails from "./getAppDetails";
+import { Backend } from "@src/app/backend";
 import logger from "@src/utils/logger";
 
 const FLATPAK_LAUNCHERS = {
@@ -1017,6 +1018,32 @@ export default function getEmudeckPathToGame(launchCommand: string) {
 		: undefined;
 }
 
+async function resolveDirectPayloadPath(
+	evidence: ShortcutEvidenceClassification,
+	candidatePath: string,
+	resolveDirectPayload?: DirectPayloadResolver,
+): Promise<string | undefined> {
+	if (resolveDirectPayload) {
+		const filesystemEvidence = await resolveDirectPayload(candidatePath);
+		return filesystemEvidence?.isRegularFile && !filesystemEvidence.isSymbolicLink
+			? candidatePath
+			: undefined;
+	}
+
+	const response = await Backend.resolveGamePayloads([
+		{
+			launcherKind: evidence.launcherKind,
+			classificationStatus: evidence.status,
+			normalized: evidence.normalized,
+			metadataCandidates: [],
+		},
+	]);
+	const result = response.results[0];
+	return result?.payloadStatus === "reachable" && result.payloadKind === "file"
+		? result.payloadPath ?? undefined
+		: undefined;
+}
+
 export async function getPathToGame(
 	applicationId: number,
 	resolveDirectPayload?: DirectPayloadResolver,
@@ -1031,20 +1058,16 @@ export async function getPathToGame(
 		evidence.launcherKind === "direct" && evidence.status === "recognized"
 			? evidence.normalized.executableTokens[0]
 			: undefined;
-	const directEvidence = directCandidate
-		? await resolveDirectPayload?.(directCandidate)
+	const resolvedDirectPayload = directCandidate
+		? await resolveDirectPayloadPath(
+				evidence,
+				directCandidate,
+				resolveDirectPayload,
+			)
 		: undefined;
-	const payloadPath =
-		directCandidate &&
-		directEvidence?.isRegularFile &&
-		!directEvidence.isSymbolicLink
-			? directCandidate
-			: evidence.payloadPath;
+	const payloadPath = resolvedDirectPayload ?? evidence.payloadPath;
 	if (!payloadPath) {
-		logger.error("Unsupported pathToGame:", {
-			strShortcutExe: appDetails.strShortcutExe,
-			strShortcutLaunchOptions: appDetails.strShortcutLaunchOptions,
-		});
+		logger.debug("Unsupported non-Steam game payload.");
 	}
 
 	return payloadPath;
