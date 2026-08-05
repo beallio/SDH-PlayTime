@@ -1,5 +1,4 @@
 import { toaster } from "@decky/api";
-import { getGameChecksumRequest } from "@src/steam/utils/GamePaths";
 import {
 	$gameChecksumsLoadingState,
 	$generatingChecksumForAppWithIndex,
@@ -26,24 +25,10 @@ export function getAllNonSteamAppIds() {
 
 export async function getFileSHA256(applicationId: number) {
 	try {
-		const shortcutEvidence = await getGameChecksumRequest(applicationId);
 		const { display_name: displayName } =
 			appStore.GetAppOverviewByAppID(applicationId);
 
-		if (isNil(shortcutEvidence)) {
-			logger.debug(
-				"[getFileSHA256] unsupported shortcut evidence. App ID: ",
-				applicationId,
-			);
-
-			return {
-				id: `${applicationId}`,
-				name: displayName,
-				status: "unsupported_shortcut" as const,
-			};
-		}
-
-		const result = await Backend.getGameChecksum(shortcutEvidence);
+		const result = await Backend.getGameChecksum({ appId: applicationId });
 
 		return {
 			id: `${applicationId}`,
@@ -56,6 +41,12 @@ export async function getFileSHA256(applicationId: number) {
 
 		return undefined;
 	}
+}
+
+export function countReadyChecksums(games: Iterable<LocalNonSteamGame>) {
+	return [...games].filter(
+		(game) => game.status === "ready" && !isNil(game.checksum),
+	).length;
 }
 
 function checksumFailureMessage(status: GameChecksumStatus) {
@@ -160,7 +151,7 @@ export async function initializeGameDetectionByChecksum() {
 
 	toaster.toast({
 		title: "PlayTime",
-		body: `Generated SHA256 for ${gameChecksums.nonSteam.size}/${allNonSteamAppIdsLength} non-steam games.`,
+		body: `Generated SHA256 for ${countReadyChecksums(gameChecksums.nonSteam.values())}/${allNonSteamAppIdsLength} non-steam games.`,
 	});
 }
 

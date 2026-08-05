@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -11,27 +12,73 @@ os.environ.setdefault("DECKY_PLUGIN_RUNTIME_DIR", tempfile.gettempdir())
 from py_modules.files import Files
 from py_modules.game_resolution.checksum import GameChecksumCoordinator
 from py_modules.game_resolution.coordinator import GameResolutionCoordinator
-from py_modules.game_resolution.models import BatchResolutionResult, ResolutionResult
+from py_modules.game_resolution.filesystem import FilesystemProbe
+from py_modules.game_resolution.heroic import HeroicAdapter, HeroicConfigRoots
+from py_modules.game_resolution.models import (
+    BatchResolutionResult,
+    ResolutionRequest,
+    ResolutionResult,
+)
+from py_modules.game_resolution.steam_shortcuts import (
+    SteamShortcutCatalog,
+    shortcut_app_id,
+)
 
 
-def direct_request(payload: Path) -> dict[str, object]:
+def direct_request(payload: Path) -> ResolutionRequest:
     path = str(payload)
     shortcut_exe = f'"{path}"' if " " in path else path
-    return {
-        "launcherKind": "direct",
-        "classificationStatus": "recognized",
-        "normalized": {
-            "flatpakAppId": None,
-            "shortcutExe": shortcut_exe,
-            "shortcutLaunchOptions": None,
-            "shortcutStartDir": None,
-            "executableTokens": [path],
-            "launchOptionTokens": [],
-            "startDirTokens": [],
-            "commandTokens": [path],
+    return ResolutionRequest.from_mapping(
+        {
+            "launcherKind": "direct",
+            "classificationStatus": "recognized",
+            "normalized": {
+                "flatpakAppId": None,
+                "shortcutExe": shortcut_exe,
+                "shortcutLaunchOptions": None,
+                "shortcutStartDir": None,
+                "executableTokens": [path],
+                "launchOptionTokens": [],
+                "startDirTokens": [],
+                "commandTokens": [path],
+            },
+            "metadataCandidates": [],
         },
-        "metadataCandidates": [],
-    }
+    )
+
+
+def checksum_request(app_id: int = 1) -> dict[str, int]:
+    return {"appId": app_id}
+
+
+class StaticShortcutSource:
+    def __init__(
+        self,
+        request: ResolutionRequest | None,
+        accepted_app_ids: set[int] | None = None,
+    ) -> None:
+        self.request = request
+        self.accepted_app_ids = accepted_app_ids or {1}
+        self.app_ids: list[int] = []
+
+    def get_request(self, app_id: int) -> ResolutionRequest | None:
+        self.app_ids.append(app_id)
+        return self.request if app_id in self.accepted_app_ids else None
+
+
+def write_shortcuts(path: Path, entries: list[dict[str, str]]) -> None:
+    def string(key: str, value: str) -> bytes:
+        return b"\x01" + key.encode() + b"\x00" + value.encode() + b"\x00"
+
+    contents = bytearray(b"\x00shortcuts\x00")
+    for index, entry in enumerate(entries):
+        contents.extend(b"\x00" + str(index).encode() + b"\x00")
+        for key, value in entry.items():
+            contents.extend(string(key, value))
+        contents.extend(b"\x08")
+    contents.extend(b"\x08\x08")
+    path.parent.mkdir(parents=True)
+    path.write_bytes(contents)
 
 
 class StaticResolver:
@@ -66,17 +113,25 @@ class RecordingFiles:
 
 
 class GameChecksumCoordinatorTest(unittest.TestCase):
-    def test_hashes_only_the_resolver_confirmed_direct_payload(self) -> None:
+    def test_hashes_only_the_backend_bound_shortcut_payload(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             payload = root / "Game.exe"
             payload.write_bytes(b"MZ game payload")
-            attacker_path = root / "wine"
-            attacker_path.write_bytes(b"not the game")
+            app_name = "Verified Game"
+            executable = str(payload)
+            app_id = shortcut_app_id(executable, app_name)
+            user_home = root / "home"
+            write_shortcuts(
+                user_home / ".local/share/Steam/userdata/123/config/shortcuts.vdf",
+                [{"appname": app_name, "exe": executable}],
+            )
 
             response = GameChecksumCoordinator(
-                GameResolutionCoordinator(), Files()
-            ).get_checksum({**direct_request(payload), "filePath": str(attacker_path)})
+                GameResolutionCoordinator(),
+                Files(),
+                SteamShortcutCatalog(user_home, lambda: "123"),
+            ).get_checksum(checksum_request(app_id))
 
         self.assertEqual(response.status, "ready")
         self.assertEqual(
@@ -92,11 +147,15 @@ class GameChecksumCoordinatorTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             payload = Path(directory) / "Game.exe"
             payload.write_bytes(b"MZ old payload")
-            coordinator = GameChecksumCoordinator(GameResolutionCoordinator(), Files())
-            old = coordinator.get_checksum(direct_request(payload))
+            coordinator = GameChecksumCoordinator(
+                GameResolutionCoordinator(),
+                Files(),
+                StaticShortcutSource(direct_request(payload)),
+            )
+            old = coordinator.get_checksum(checksum_request())
 
             payload.write_bytes(b"MZ updated payload")
-            updated = coordinator.get_checksum(direct_request(payload))
+            updated = coordinator.get_checksum(checksum_request())
 
         self.assertEqual(old.status, "ready")
         self.assertEqual(updated.status, "ready")
@@ -110,39 +169,90 @@ class GameChecksumCoordinatorTest(unittest.TestCase):
             symlink = root / "Game Link.exe"
             symlink.symlink_to(payload)
 
-            coordinator = GameChecksumCoordinator(GameResolutionCoordinator(), Files())
-            linked = coordinator.get_checksum(direct_request(symlink))
-            directory_result = coordinator.get_checksum(direct_request(root))
+            linked = GameChecksumCoordinator(
+                GameResolutionCoordinator(),
+                Files(),
+                StaticShortcutSource(direct_request(symlink)),
+            ).get_checksum(checksum_request())
+            directory_result = GameChecksumCoordinator(
+                GameResolutionCoordinator(),
+                Files(),
+                StaticShortcutSource(direct_request(root)),
+            ).get_checksum(checksum_request())
 
         self.assertEqual(linked.status, "ready")
         self.assertEqual(directory_result.status, "payload_unavailable")
         self.assertEqual(directory_result.reason_code, "kind_mismatch")
 
-    def test_rejects_malformed_and_unsupported_launcher_evidence_without_hashing(
-        self,
-    ) -> None:
+    def test_rejects_forged_or_unbound_checksum_requests_without_hashing(self) -> None:
         files = RecordingFiles()
-        coordinator = GameChecksumCoordinator(GameResolutionCoordinator(), files)
-
-        malformed = coordinator.get_checksum({"filePath": "/arbitrary/path"})
-        unsupported = [
+        verified = Path("/games/Verified.exe")
+        coordinator = GameChecksumCoordinator(
+            GameResolutionCoordinator(),
+            files,
+            StaticShortcutSource(direct_request(verified)),
+        )
+        arbitrary = "/games/Attacker.exe"
+        forged_normalized = {
+            "flatpakAppId": None,
+            "shortcutExe": arbitrary,
+            "shortcutLaunchOptions": None,
+            "shortcutStartDir": None,
+            "executableTokens": [arbitrary],
+            "launchOptionTokens": [],
+            "startDirTokens": [],
+            "commandTokens": [arbitrary],
+        }
+        rejected = [
+            coordinator.get_checksum({"filePath": arbitrary}),
             coordinator.get_checksum(
                 {
-                    **direct_request(Path("/games/Game.exe")),
-                    "launcherKind": launcher_kind,
+                    "appId": 1,
+                    "launcherKind": "direct",
+                    "classificationStatus": "recognized",
+                    "normalized": forged_normalized,
+                    "metadataCandidates": [],
                 }
-            )
-            for launcher_kind in ("lutris", "bottles", "emudeck-srm")
+            ),
+            coordinator.get_checksum({"appId": 2}),
+            coordinator.get_checksum(
+                {"appId": 1, "shortcutIdentity": "unrelated-shortcut"}
+            ),
+            coordinator.get_checksum({"appId": 1, "payloadPath": arbitrary}),
         ]
 
-        self.assertEqual(malformed.status, "unsupported_shortcut")
-        self.assertEqual(malformed.reason_code, "malformed")
+        self.assertTrue(all(result.checksum is None for result in rejected))
         self.assertTrue(
-            all(result.status == "unsupported_shortcut" for result in unsupported)
+            all(result.status == "unsupported_shortcut" for result in rejected)
         )
-        self.assertTrue(
-            all(result.reason_code == "unsupported" for result in unsupported)
-        )
+        self.assertEqual(files.paths, [])
+
+    def test_unsupported_sources_fail_closed_without_hashing(self) -> None:
+        files = RecordingFiles()
+        for launcher_kind in ("lutris", "bottles", "emudeck-srm"):
+            with self.subTest(launcher_kind=launcher_kind):
+                request = ResolutionRequest.from_mapping(
+                    {
+                        "launcherKind": launcher_kind,
+                        "classificationStatus": "recognized",
+                        "normalized": {
+                            "flatpakAppId": None,
+                            "shortcutExe": "/games/Game.exe",
+                            "shortcutLaunchOptions": None,
+                            "shortcutStartDir": None,
+                            "executableTokens": ["/games/Game.exe"],
+                            "launchOptionTokens": [],
+                            "startDirTokens": [],
+                            "commandTokens": ["/games/Game.exe"],
+                        },
+                        "metadataCandidates": [],
+                    }
+                )
+                result = GameChecksumCoordinator(
+                    GameResolutionCoordinator(), files, StaticShortcutSource(request)
+                ).get_checksum(checksum_request())
+                self.assertEqual(result.status, "unsupported_shortcut")
+                self.assertEqual(result.reason_code, "unsupported")
         self.assertEqual(files.paths, [])
 
     def test_maps_resolver_diagnostics_without_exposing_a_payload_path(self) -> None:
@@ -187,8 +297,10 @@ class GameChecksumCoordinatorTest(unittest.TestCase):
             with self.subTest(name=name):
                 files = RecordingFiles()
                 response = GameChecksumCoordinator(
-                    StaticResolver(result), files
-                ).get_checksum(direct_request(Path("/games/Game.exe")))
+                    StaticResolver(result),
+                    files,
+                    StaticShortcutSource(direct_request(Path("/games/Game.exe"))),
+                ).get_checksum(checksum_request())
 
                 self.assertEqual(response.status, expected[name])
                 self.assertEqual(response.reason_code, result.reason_code)
@@ -223,15 +335,101 @@ class GameChecksumCoordinatorTest(unittest.TestCase):
             ]
         )
         files = RecordingFiles()
-        coordinator = GameChecksumCoordinator(resolver, files)
+        coordinator = GameChecksumCoordinator(
+            resolver,
+            files,
+            StaticShortcutSource(direct_request(Path("/games/Game.exe"))),
+        )
 
-        disconnected = coordinator.get_checksum(direct_request(Path("/games/Game.exe")))
-        reconnected = coordinator.get_checksum(direct_request(Path("/games/Game.exe")))
+        disconnected = coordinator.get_checksum(checksum_request())
+        reconnected = coordinator.get_checksum(checksum_request())
 
         self.assertEqual(disconnected.status, "payload_unavailable")
         self.assertEqual(disconnected.reason_code, "drive_disconnected")
         self.assertEqual(reconnected.status, "ready")
         self.assertEqual(files.paths, ["/run/media/deck/SD Card/Games/Game.exe"])
+
+    def test_hashes_reachable_heroic_metadata_and_rejects_ambiguous_metadata(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            user_home = root / "home"
+            heroic_root = root / "heroic"
+            payload = root / "Games/Normal Game/Binaries/NormalGame.exe"
+            payload.parent.mkdir(parents=True)
+            payload.write_bytes(b"MZ Heroic payload")
+            installed = {
+                "normal-game": {
+                    "app_name": "normal-game",
+                    "install_path": str(payload.parents[1]),
+                    "executable": "Binaries/NormalGame.exe",
+                }
+            }
+            installed_path = heroic_root / "legendaryConfig/legendary/installed.json"
+            installed_path.parent.mkdir(parents=True)
+            installed_path.write_text(json.dumps(installed), encoding="utf-8")
+            (heroic_root / "gog_store").mkdir()
+            (heroic_root / "gog_store/installed.json").write_text(
+                json.dumps(
+                    {
+                        "installed": [
+                            {
+                                "appName": "normal-game",
+                                "install_path": str(root / "Gog Game"),
+                                "executable": "GogGame.exe",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            resolved_executable = "/opt/Heroic/heroic"
+            resolved_options = "heroic://launch?appName=normal-game&runner=legendary"
+            ambiguous_options = "heroic://launch?appName=normal-game"
+            resolved_name = "Heroic Resolved"
+            ambiguous_name = "Heroic Ambiguous"
+            write_shortcuts(
+                user_home / ".local/share/Steam/userdata/123/config/shortcuts.vdf",
+                [
+                    {
+                        "appname": resolved_name,
+                        "exe": resolved_executable,
+                        "launchoptions": resolved_options,
+                    },
+                    {
+                        "appname": ambiguous_name,
+                        "exe": resolved_executable,
+                        "launchoptions": ambiguous_options,
+                    },
+                ],
+            )
+            source = SteamShortcutCatalog(user_home, lambda: "123")
+            files = RecordingFiles(checksum="heroic-digest")
+            coordinator = GameChecksumCoordinator(
+                GameResolutionCoordinator(
+                    adapters=[
+                        HeroicAdapter(
+                            FilesystemProbe(),
+                            config_roots=HeroicConfigRoots(heroic_root, heroic_root),
+                        )
+                    ]
+                ),
+                files,
+                source,
+            )
+            resolved = coordinator.get_checksum(
+                checksum_request(shortcut_app_id(resolved_executable, resolved_name))
+            )
+            ambiguous = coordinator.get_checksum(
+                checksum_request(shortcut_app_id(resolved_executable, ambiguous_name))
+            )
+
+        self.assertEqual(resolved.status, "ready")
+        self.assertEqual(resolved.checksum, "heroic-digest")
+        self.assertEqual(ambiguous.status, "unsupported_shortcut")
+        self.assertEqual(ambiguous.reason_code, "ambiguous")
+        self.assertEqual(files.paths, [str(payload)])
 
     def test_hash_failure_is_structured_and_never_returns_a_path(self) -> None:
         result = ResolutionResult(
@@ -245,10 +443,11 @@ class GameChecksumCoordinatorTest(unittest.TestCase):
             "/games/HeroicPayload.exe",
         )
         files = RecordingFiles(error=OSError("hash failed"))
-
-        response = GameChecksumCoordinator(StaticResolver(result), files).get_checksum(
-            direct_request(Path("/games/Game.exe"))
-        )
+        response = GameChecksumCoordinator(
+            StaticResolver(result),
+            files,
+            StaticShortcutSource(direct_request(Path("/games/Game.exe"))),
+        ).get_checksum(checksum_request())
 
         self.assertEqual(response.status, "hash_failure")
         self.assertEqual(response.reason_code, "hash_failure")

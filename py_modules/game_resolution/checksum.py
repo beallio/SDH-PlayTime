@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Literal, Mapping, Protocol
 
-from .models import BatchResolutionResult, ReasonCode, ResolutionResult
+from .models import (
+    BatchResolutionResult,
+    ReasonCode,
+    RequestValidationError,
+    ResolutionRequest,
+    ResolutionResult,
+)
 
 
 ChecksumStatus = Literal[
@@ -24,6 +30,28 @@ class FileHasher(Protocol):
     def get_file_sha256(self, file_path: str) -> str | None: ...
 
 
+class ChecksumShortcutSource(Protocol):
+    def get_request(self, app_id: int) -> ResolutionRequest | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ChecksumRequest:
+    app_id: int
+
+    @classmethod
+    def from_mapping(cls, value: object) -> "ChecksumRequest":
+        if not isinstance(value, Mapping) or set(value) != {"appId"}:
+            raise RequestValidationError("malformed")
+        app_id = value.get("appId")
+        if (
+            isinstance(app_id, bool)
+            or not isinstance(app_id, int)
+            or not 0 < app_id <= 0xFFFFFFFF
+        ):
+            raise RequestValidationError("malformed")
+        return cls(app_id)
+
+
 @dataclass(frozen=True, slots=True)
 class GameChecksumResult:
     checksum: str | None
@@ -39,13 +67,30 @@ class GameChecksumResult:
 
 
 class GameChecksumCoordinator:
-    """Resolve untrusted shortcut evidence before hashing its verified payload."""
+    """Hash only a payload resolved from a backend-owned Steam shortcut record."""
 
-    def __init__(self, resolver: ChecksumResolver, files: FileHasher) -> None:
+    def __init__(
+        self,
+        resolver: ChecksumResolver,
+        files: FileHasher,
+        shortcuts: ChecksumShortcutSource,
+    ) -> None:
         self._resolver = resolver
         self._files = files
+        self._shortcuts = shortcuts
 
-    def get_checksum(self, shortcut_evidence: object) -> GameChecksumResult:
+    def get_checksum(self, request: object) -> GameChecksumResult:
+        try:
+            app_id = ChecksumRequest.from_mapping(request).app_id
+        except RequestValidationError as error:
+            return GameChecksumResult(None, "unsupported_shortcut", error.reason_code)
+        try:
+            shortcut_evidence = self._shortcuts.get_request(app_id)
+        except Exception:
+            return GameChecksumResult(None, "payload_unavailable", "probe_failure")
+        if shortcut_evidence is None:
+            return GameChecksumResult(None, "unsupported_shortcut", "missing")
+
         resolution = self._single_resolution(shortcut_evidence)
         if isinstance(resolution, GameChecksumResult):
             return resolution
@@ -65,9 +110,9 @@ class GameChecksumCoordinator:
         return GameChecksumResult(checksum, "ready", None)
 
     def _single_resolution(
-        self, shortcut_evidence: object
+        self, shortcut_evidence: ResolutionRequest
     ) -> ResolutionResult | GameChecksumResult:
-        batch = self._resolver.resolve_batch([shortcut_evidence])
+        batch = self._resolver.resolve_batch([shortcut_evidence.to_dict()])
         if batch.error is not None or len(batch.results) != 1:
             return GameChecksumResult(None, "unsupported_shortcut", "malformed")
         return batch.results[0]

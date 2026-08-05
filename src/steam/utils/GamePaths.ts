@@ -1034,7 +1034,7 @@ async function resolvePayloadPath(
 		: undefined;
 }
 
-export async function getGameChecksumRequest(applicationId: number) {
+async function getGameResolutionRequest(applicationId: number) {
 	const appDetails = await getAppDetails(applicationId);
 	if (!appDetails) {
 		return;
@@ -1043,7 +1043,7 @@ export async function getGameChecksumRequest(applicationId: number) {
 }
 
 export async function getPathToGame(applicationId: number) {
-	const request = await getGameChecksumRequest(applicationId);
+	const request = await getGameResolutionRequest(applicationId);
 	const resolvedPayload = request ? await resolvePayloadPath(request) : undefined;
 	if (!resolvedPayload) {
 		logger.debug("Unsupported non-Steam game payload.");

@@ -8,7 +8,7 @@ type LocalNonSteamGame = {
 	id: string;
 	name: string;
 	checksum?: string;
-	pathToGame?: string;
+	status?: GameChecksumStatus;
 };
 
 type ReportPage = "all-time" | "by-month" | "by-week";

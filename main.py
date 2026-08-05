@@ -31,6 +31,7 @@ from py_modules.game_resolution import (
     MAX_RESOLUTION_BATCH_SIZE,
 )
 from py_modules.game_resolution.models import BatchResolutionResult, ResolutionResult
+from py_modules.game_resolution.steam_shortcuts import SteamShortcutCatalog
 from py_modules.games import Games
 from py_modules.helpers import parse_date
 from py_modules.statistics import Statistics
@@ -76,9 +77,7 @@ def _is_bounded_association_game_id(value: object) -> bool:
 class Plugin:
     files: Files = Files()
     game_resolution_coordinator: GameResolutionCoordinator = GameResolutionCoordinator()
-    game_checksum_coordinator: GameChecksumCoordinator = GameChecksumCoordinator(
-        game_resolution_coordinator, files
-    )
+    game_checksum_coordinator: GameChecksumCoordinator
     games: Games
     statistics: Statistics
     time_tracking: TimeTracking
@@ -90,6 +89,14 @@ class Plugin:
         try:
             # Initialize UserManager for per-user database handling
             self.user_manager = UserManager(data_dir, decky.logger)
+            self.game_checksum_coordinator = GameChecksumCoordinator(
+                self.game_resolution_coordinator,
+                self.files,
+                SteamShortcutCatalog(
+                    Path(decky_user_home),
+                    lambda: self.user_manager.current_user_id,
+                ),
+            )
 
             # NOTE: Services (games, statistics, time_tracking) will be initialized
             # when set_current_user is called from the frontend.

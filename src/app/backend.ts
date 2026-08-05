@@ -136,11 +136,11 @@ export class Backend {
 	}
 
 	public static async getGameChecksum(
-		shortcutEvidence: GameResolutionRequest,
+		request: GameChecksumRequest,
 	): Promise<GameChecksumResponse> {
-		return await call<[GameResolutionRequest], GameChecksumResponse>(
+		return await call<[GameChecksumRequest], GameChecksumResponse>(
 			BACK_END_API.GET_GAME_CHECKSUM,
-			shortcutEvidence,
+			request,
 		);
 	}
 

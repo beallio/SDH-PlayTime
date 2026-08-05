@@ -105,6 +105,10 @@ interface GameResolutionBatchResponse {
 	error: GameResolutionReasonCode | null;
 }
 
+interface GameChecksumRequest {
+	appId: number;
+}
+
 type GameChecksumStatus =
 	| "ready"
 	| "unsupported_shortcut"
