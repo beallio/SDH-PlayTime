@@ -106,7 +106,10 @@ def _row_to_game_time_dto(cursor, row) -> GameTimeDto:
 
 
 def _row_to_playtime_information(cursor, row) -> PlaytimeInformation:
-    """Maps row to PlaytimeInformation: (game_id, total_time, last_played_date, game_name, aliases_id)"""
+    """Maps row to PlaytimeInformation.
+
+    (game_id, total_time, last_played_date, game_name, aliases_id)
+    """
     game_id, total_time, last_played_date, game_name, aliases_id = row
     return PlaytimeInformation(
         game_id, total_time, last_played_date, game_name, aliases_id
@@ -114,13 +117,19 @@ def _row_to_playtime_information(cursor, row) -> PlaytimeInformation:
 
 
 def _row_to_daily_game_time_dto(cursor, row) -> DailyGameTimeDto:
-    """Maps row to DailyGameTimeDto: (date, game_id, game_name, time, sessions, checksum)"""
+    """Maps row to DailyGameTimeDto.
+
+    (date, game_id, game_name, time, sessions, checksum)
+    """
     date, game_id, game_name, time, sessions, checksum = row
     return DailyGameTimeDto(date, game_id, game_name, time, sessions, checksum)
 
 
 def _row_to_game_session_tuple(cursor, row) -> Tuple[str, SessionInformation]:
-    """Maps row to (game_id, SessionInformation): (game_id, date, duration, migrated, checksum)"""
+    """Maps row to (game_id, SessionInformation).
+
+    (game_id, date, duration, migrated, checksum)
+    """
     game_id, date, duration, migrated, checksum = row
     return (game_id, SessionInformation(date, duration, migrated, checksum))
 
@@ -138,7 +147,11 @@ def _row_to_game_dictionary(cursor, row) -> GameDictionary:
 
 
 def _row_to_file_checksum(cursor, row) -> FileChecksum:
-    """Maps row to FileChecksum: (checksum_id, game_id, game_name, checksum, algorithm, chunk_size, created_at, updated_at)"""
+    """Maps row to FileChecksum.
+
+    (checksum_id, game_id, game_name, checksum, algorithm, chunk_size,
+    created_at, updated_at)
+    """
     (
         checksum_id,
         game_id,
@@ -162,7 +175,11 @@ def _row_to_file_checksum(cursor, row) -> FileChecksum:
 
 
 def _row_to_games_checksum(cursor, row) -> GamesChecksum:
-    """Maps row to GamesChecksum: (checksum_id, game_id, game_name, checksum, algorithm, chunk_size, created_at, updated_at)"""
+    """Maps row to GamesChecksum.
+
+    (checksum_id, game_id, game_name, checksum, algorithm, chunk_size,
+    created_at, updated_at)
+    """
     (
         checksum_id,
         game_id,
@@ -186,7 +203,10 @@ def _row_to_games_checksum(cursor, row) -> GamesChecksum:
 
 
 def _row_to_date_game_session_tuple(cursor, row) -> Tuple[str, str, SessionInformation]:
-    """Maps row to (session_date, game_id, SessionInformation): (session_date, game_id, date_time, duration, migrated, checksum)"""
+    """Maps row to (session_date, game_id, SessionInformation).
+
+    (session_date, game_id, date_time, duration, migrated, checksum)
+    """
     session_date, game_id, date_time, duration, migrated, checksum = row
     return (
         session_date,
@@ -318,7 +338,11 @@ class Dao:
             return (
                 connection.execute(
                     """
-                    SELECT EXISTS(SELECT 1 FROM play_time pt WHERE date_time < ? AND pt.game_id = ?)
+                    SELECT EXISTS(
+                        SELECT 1
+                        FROM play_time pt
+                        WHERE date_time < ? AND pt.game_id = ?
+                    )
                     """,
                     (
                         date.isoformat(),
@@ -331,8 +355,12 @@ class Dao:
         return (
             connection.execute(
                 """
-                SELECT EXISTS(SELECT 1 FROM play_time pt WHERE date_time < ?)
-                """,
+                    SELECT EXISTS(
+                        SELECT 1
+                        FROM play_time pt
+                        WHERE date_time < ?
+                    )
+                    """,
                 (date.isoformat(),),
             ).fetchone()[0]
             == 1
@@ -348,7 +376,11 @@ class Dao:
             return (
                 connection.execute(
                     """
-                    SELECT EXISTS(SELECT 1 FROM play_time pt WHERE date_time > ? AND pt.game_id = ?)
+                    SELECT EXISTS(
+                        SELECT 1
+                        FROM play_time pt
+                        WHERE date_time > ? AND pt.game_id = ?
+                    )
                     """,
                     (
                         date.isoformat(),
@@ -454,7 +486,10 @@ class Dao:
         placeholders = ", ".join("?" for _ in member_ids)
         names_by_game_id = dict(
             connection.execute(
-                f"SELECT game_id, name FROM game_dict WHERE game_id IN ({placeholders})",
+                (
+                    "SELECT game_id, name FROM game_dict "
+                    f"WHERE game_id IN ({placeholders})"
+                ),
                 member_ids,
             ).fetchall()
         )
@@ -529,18 +564,21 @@ class Dao:
                 if request.expected_fingerprint != snapshot.fingerprint:
                     raise AssociationComponentError(
                         code="STALE_COMPONENT",
-                        message="The association component changed before it was confirmed.",
+                        message="The association component changed before "
+                        "it was confirmed.",
                     )
                 if request.expected_parent_game_id != snapshot.expected_parent_game_id:
                     raise AssociationComponentError(
                         code="STALE_COMPONENT",
-                        message="The association component parent changed before confirmation.",
+                        message="The association component parent changed before "
+                        "confirmation.",
                     )
                 missing_members = set(component_member_ids) - set(selected_member_ids)
                 if snapshot.status == "conflict" and missing_members:
                     raise AssociationComponentError(
                         code="COMPONENT_CONFLICT",
-                        message="Conflicted components require confirmation of every member.",
+                        message="Conflicted components require confirmation of "
+                        "every member.",
                     )
                 if missing_members:
                     raise AssociationComponentError(
@@ -566,14 +604,16 @@ class Dao:
                 if request.proposed_parent_game_id not in selected_by_game_id:
                     raise AssociationComponentError(
                         code="PARENT_NOT_MEMBER",
-                        message="The proposed parent must be a selected component member.",
+                        message="The proposed parent must be a selected "
+                        "component member.",
                     )
 
                 selected_parent = selected_by_game_id[request.proposed_parent_game_id]
                 if selected_parent.game_name != request.proposed_parent_game_name:
                     raise AssociationComponentError(
                         code="INVALID_SELECTION",
-                        message="The proposed parent name must match the selected member.",
+                        message="The proposed parent name must match the "
+                        "selected member.",
                     )
 
                 selected_members = tuple(
@@ -721,7 +761,7 @@ class Dao:
                 pt_agg.last_played_date
             FROM game_dict gd
             LEFT JOIN overall_time ot ON gd.game_id = ot.game_id
-            LEFT JOIN (
+                LEFT JOIN (
                 SELECT game_id, MAX(date_time) AS last_played_date
                 FROM play_time
                 GROUP BY game_id
@@ -967,7 +1007,9 @@ class Dao:
                 FROM (
                     SELECT
                         *,
-                        ROW_NUMBER() OVER (PARTITION BY game_id ORDER BY date_time DESC) AS rn
+                        ROW_NUMBER() OVER (
+                            PARTITION BY game_id ORDER BY date_time DESC
+                        ) AS rn
                     FROM play_time
                 ) pt
                 LEFT JOIN (
@@ -1083,12 +1125,16 @@ class Dao:
             FROM (
                 SELECT
                     *,
-                    ROW_NUMBER() OVER (PARTITION BY game_id ORDER BY date_time DESC) AS rn
+                    ROW_NUMBER() OVER (
+                        PARTITION BY game_id ORDER BY date_time DESC
+                    ) AS rn
                 FROM play_time
                 WHERE game_id IN ({placeholders})
             ) pt
             LEFT JOIN (
-                SELECT game_id, MIN(checksum) AS checksum
+                SELECT
+                    game_id,
+                    MIN(checksum) AS checksum
                 FROM game_file_checksum
                 GROUP BY game_id
             ) gfc ON gfc.game_id = pt.game_id
@@ -1283,8 +1329,17 @@ class Dao:
     ):
         connection.execute(
             """
-                INSERT INTO game_file_checksum(game_id, checksum, algorithm, chunk_size, created_at, updated_at)
-                VALUES (?, ?, ?, ?, IFNULL(?, CURRENT_TIMESTAMP), IFNULL(?, CURRENT_TIMESTAMP))
+                INSERT INTO game_file_checksum(
+                    game_id, checksum, algorithm, chunk_size, created_at, updated_at
+                )
+                VALUES (
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    IFNULL(?, CURRENT_TIMESTAMP),
+                    IFNULL(?, CURRENT_TIMESTAMP)
+                )
                 """,
             (
                 game_id,
@@ -1310,9 +1365,19 @@ class Dao:
     ):
         connection.executemany(
             """
-            INSERT OR IGNORE INTO game_file_checksum(game_id, checksum, algorithm, chunk_size, created_at, updated_at)
-            VALUES (?, ?, ?, ?, IFNULL(?, CURRENT_TIMESTAMP), IFNULL(?, CURRENT_TIMESTAMP))
-            """,
+                INSERT OR IGNORE INTO game_file_checksum(
+                    game_id,
+                    checksum,
+                    algorithm,
+                    chunk_size,
+                    created_at,
+                    updated_at,
+                )
+                VALUES (
+                    ?, ?, ?, ?, IFNULL(?, CURRENT_TIMESTAMP),
+                    IFNULL(?, CURRENT_TIMESTAMP)
+                )
+                """,
             checksums_data,
         )
 
@@ -1549,7 +1614,9 @@ class Dao:
             if not self._is_game_a_child(connection, child_game_id):
                 raise AssociationComponentError(
                     code="NOT_A_CHILD",
-                    message=f"Game '{child_game_id}' is not associated with any parent.",
+                    message=(
+                        f"Game '{child_game_id}' is not associated with any parent."
+                    ),
                 )
             self._remove_game_association(connection, child_game_id)
 
@@ -1571,7 +1638,9 @@ class Dao:
             if result.rowcount == 0:
                 raise AssociationComponentError(
                     code="NOT_ASSOCIATED",
-                    message="The association component has no explicit edges to dissolve.",
+                    message=(
+                        "The association component has no explicit edges to dissolve."
+                    ),
                 )
 
     def _remove_game_association(

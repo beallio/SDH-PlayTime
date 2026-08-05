@@ -223,9 +223,11 @@ class Plugin:
             dto = AddTimeDTO.from_dict(dto_dict)
 
             if not self.tracking_manager.should_track_session(dto.game_id):
+                status = self.tracking_manager.get_tracking_status(dto.game_id)
                 decky.logger.info(
-                    f"[add_time] Skipping tracking for game {dto.game_id} "
-                    f"(status: {self.tracking_manager.get_tracking_status(dto.game_id)})"
+                    "[add_time] Skipping tracking for game %s (status: %s)",
+                    dto.game_id,
+                    status,
                 )
                 return
 
@@ -349,7 +351,8 @@ class Plugin:
             return convert_keys_to_camel_case(result.to_dict())
         except Exception as error:
             decky.logger.exception(
-                "[get_game_checksum] Checksum coordinator failed without hashing a payload: %s",
+                "[get_game_checksum] Checksum coordinator failed without hashing "
+                "a payload: %s",
                 type(error).__name__,
             )
             return {
@@ -367,7 +370,8 @@ class Plugin:
             return convert_keys_to_camel_case(result.to_dict())
         except Exception as error:
             decky.logger.exception(
-                "[resolve_game_payloads] Resolver failed without processing a payload: %s",
+                "[resolve_game_payloads] Resolver failed without processing "
+                "a payload: %s",
                 type(error).__name__,
             )
             if isinstance(entries, list) and len(entries) <= MAX_RESOLUTION_BATCH_SIZE:
@@ -635,7 +639,9 @@ class Plugin:
                     "success": False,
                     "error": {
                         "code": "INVALID_REQUEST",
-                        "message": "Invalid association component confirmation request.",
+                        "message": (
+                            "Invalid association component confirmation request."
+                        ),
                     },
                 }
 

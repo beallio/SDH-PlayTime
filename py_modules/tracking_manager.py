@@ -34,8 +34,9 @@ class TrackingManager:
             ValueError: If status is not valid
         """
         if status not in self.VALID_STATUSES:
+            valid_statuses = ", ".join(self.VALID_STATUSES)
             raise ValueError(
-                f"Invalid status '{status}'. Must be one of: {', '.join(self.VALID_STATUSES)}"
+                f"Invalid status '{status}'. Must be one of: {valid_statuses}"
             )
 
         # If setting to default, remove the entry (default is the absence of config)

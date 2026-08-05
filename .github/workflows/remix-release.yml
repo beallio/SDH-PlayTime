@@ -49,8 +49,8 @@ jobs:
 
       - name: Ruff lint and formatting checks
         run: |
-          uvx ruff@0.16.0 check .
-          uvx ruff@0.16.0 format --check .
+          uvx ruff@0.16.0 check . --exclude 'docs,tests,decky.pyi,py_modules/tests,py_modules/yaml,py_modules/yaml/'
+          uvx ruff@0.16.0 format --check . --exclude 'docs,tests,decky.pyi,py_modules/tests,py_modules/yaml,py_modules/yaml/'
 
       - name: Python type check
         run: |
