@@ -48,6 +48,27 @@ def direct_request(payload: Path) -> ResolutionRequest:
     )
 
 
+def heroic_request() -> ResolutionRequest:
+    launch_uri = "heroic://launch?appName=normal-game&runner=legendary"
+    return ResolutionRequest.from_mapping(
+        {
+            "launcherKind": "heroic",
+            "classificationStatus": "recognized",
+            "normalized": {
+                "flatpakAppId": None,
+                "shortcutExe": "/opt/Heroic/heroic",
+                "shortcutLaunchOptions": launch_uri,
+                "shortcutStartDir": None,
+                "executableTokens": ["/opt/Heroic/heroic"],
+                "launchOptionTokens": [launch_uri],
+                "startDirTokens": [],
+                "commandTokens": ["/opt/Heroic/heroic", launch_uri],
+            },
+            "metadataCandidates": [],
+        }
+    )
+
+
 def checksum_request(app_id: int = 1) -> dict[str, int]:
     return {"appId": app_id}
 
@@ -398,6 +419,49 @@ class GameChecksumCoordinatorTest(unittest.TestCase):
         self.assertEqual(disconnected.reason_code, "drive_disconnected")
         self.assertEqual(reconnected.status, "ready")
         self.assertEqual(files.paths, ["/run/media/deck/SD Card/Games/Game.exe"])
+
+    def test_heroic_checksum_stops_until_a_reconnected_payload_is_proved(self) -> None:
+        resolver = SequencedResolver(
+            [
+                ResolutionResult(
+                    "heroic",
+                    "recognized",
+                    "resolved",
+                    "unreachable",
+                    "unknown",
+                    "heroic_metadata",
+                    "drive_disconnected",
+                    None,
+                ),
+                ResolutionResult(
+                    "heroic",
+                    "recognized",
+                    "resolved",
+                    "reachable",
+                    "file",
+                    "heroic_metadata",
+                    None,
+                    "/run/media/deck/SD Card/Heroic/NormalGame.exe",
+                ),
+            ]
+        )
+        files = RecordingFiles()
+        coordinator = GameChecksumCoordinator(
+            resolver,
+            files,
+            StaticShortcutSource(heroic_request()),
+        )
+
+        disconnected = coordinator.get_checksum(checksum_request())
+        reconnected = coordinator.get_checksum(checksum_request())
+
+        self.assertEqual(disconnected.status, "payload_unavailable")
+        self.assertEqual(disconnected.reason_code, "drive_disconnected")
+        self.assertEqual(reconnected.status, "ready")
+        self.assertEqual(
+            files.paths,
+            ["/run/media/deck/SD Card/Heroic/NormalGame.exe"],
+        )
 
     def test_hashes_reachable_heroic_metadata_and_rejects_ambiguous_metadata(
         self,

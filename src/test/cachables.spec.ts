@@ -8,6 +8,18 @@ mock.module("@decky/api", () => ({
 
 const { buildPlayTimeMap } = await import("../cachables");
 
+const gameParentProjection = (await Bun.file(
+	new URL("../../tests/fixtures/game-parent-projection.json", import.meta.url),
+).json()) as {
+	canonicalRecord: {
+		game: { id: string; name: string };
+		totalTime: number;
+		lastPlayedDate: string;
+		aliasesId: string;
+	};
+	aliases: string[];
+};
+
 describe("buildPlayTimeMap", () => {
 	it("maps unmerged record to its own game ID with falsey isMerged", () => {
 		const records = [
@@ -49,6 +61,23 @@ describe("buildPlayTimeMap", () => {
 		expect(map.get("child1")).toBe(parentEntry);
 		expect(map.get("child2")).toBe(parentEntry);
 		expect(map.get("child3")).toBe(parentEntry);
+	});
+
+	it("keeps an RPC-confirmed zero-time parent canonical over checksum leaders", () => {
+		const map = buildPlayTimeMap([gameParentProjection.canonicalRecord]);
+		const expectedLocalLastDate =
+			new Date(gameParentProjection.canonicalRecord.lastPlayedDate).getTime() /
+			1000;
+
+		const parent = map.get(gameParentProjection.canonicalRecord.game.id);
+		expect(parent).toEqual({
+			time: 60,
+			lastDate: expectedLocalLastDate,
+			isMerged: true,
+		});
+		for (const childId of gameParentProjection.aliases) {
+			expect(map.get(childId)).toBe(parent);
+		}
 	});
 
 	it("covers whitespace and empty alias tokens so malformed separators do not create empty cache keys", () => {

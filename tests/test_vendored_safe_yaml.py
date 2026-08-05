@@ -43,7 +43,9 @@ class VendoredSafeYamlTests(unittest.TestCase):
         )
         self.assertIn("yaml/composer.py", release_archive.VENDORED_PYYAML_FILE_HASHES)
 
-    def test_clean_archive_never_binds_to_host_pyyaml_or_native_code(self) -> None:
+    def test_clean_archive_imports_backend_without_host_pyyaml_or_native_code(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             workdir = Path(temporary_directory)
             archive = release_archive.build_archive(
@@ -74,8 +76,10 @@ class VendoredSafeYamlTests(unittest.TestCase):
                 encoding="utf-8",
             )
             runtime_check = """
+import os
 from pathlib import Path
 import sys
+import types
 
 plugin_root = Path.cwd()
 poison_root = plugin_root.parent / "poison"
@@ -113,7 +117,30 @@ for value, options in (
         pass
     else:
         raise AssertionError(f"unsafe YAML input was accepted: {value!r}")
-"""
+
+runtime_dir = plugin_root / "runtime"
+runtime_dir.mkdir()
+os.environ.update(
+    DECKY_USER_HOME=str(plugin_root / "user-home"),
+    DECKY_PLUGIN_RUNTIME_DIR=str(runtime_dir),
+    DECKY_PLUGIN_DIR=str(plugin_root),
+)
+decky = types.ModuleType("decky")
+decky.logger = types.SimpleNamespace()
+sys.modules["decky"] = decky
+sys.path.insert(0, str(plugin_root))
+import main
+from py_modules.game_resolution import (
+    DirectExecutableAdapter,
+    GameChecksumCoordinator,
+    GameResolutionCoordinator,
+    HeroicAdapter,
+)
+
+assert main.GameChecksumCoordinator is GameChecksumCoordinator
+assert GameResolutionCoordinator and DirectExecutableAdapter and HeroicAdapter
+assert "yaml" not in sys.modules
+            """
             result = subprocess.run(
                 [sys.executable, "-I", "-S", "-c", runtime_check],
                 cwd=plugin_root,

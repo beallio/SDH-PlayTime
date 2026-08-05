@@ -1,12 +1,19 @@
 import unittest
+import json
 import os
 import shutil
 import tempfile
 import sqlite3
+from datetime import datetime
 from contextlib import closing
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from py_modules.tests.helpers import remove_date_fields
+
+
+GAME_PARENT_PROJECTION_FIXTURE_PATH = (
+    Path(__file__).parents[2] / "tests" / "fixtures" / "game-parent-projection.json"
+)
 
 
 class TestPlugin(unittest.IsolatedAsyncioTestCase):
@@ -560,6 +567,208 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(confirmation_result["data"]["status"], "confirmed")
         self.assertEqual(confirmation_result["data"]["aliases"], ["alpha", "gamma"])
+
+    async def test_grouped_confirmation_projects_one_canonical_parent_everywhere(self):
+        """The RPC-selected parent must win over checksum order in every projection."""
+        fixture = json.loads(
+            GAME_PARENT_PROJECTION_FIXTURE_PATH.read_text(encoding="utf-8")
+        )
+        canonical_record = fixture["canonicalRecord"]
+        assert isinstance(canonical_record, dict)
+        canonical_parent = fixture["canonicalParent"]
+        assert isinstance(canonical_parent, dict)
+        aliases = fixture["aliases"]
+        assert isinstance(aliases, list)
+        steam_alias = fixture["steamAlias"]
+        assert isinstance(steam_alias, int)
+        plugin = self.main.Plugin()
+        await plugin._main()
+        await plugin.set_current_user("76561198077777775")
+        dao = plugin.association_manager.dao
+
+        for game_id, name in (
+            (str(steam_alias), "Steam Shortcut Alias"),
+            ("representative-child", "Representative Child"),
+            ("hidden-child", "Hidden Child"),
+            ("third-leader", "Third Leader"),
+            ("explicit-parent", "Explicit Parent"),
+        ):
+            dao.save_game_dict(game_id, name)
+
+        # Two confirmed parents become one checksum component only after both stars
+        # exist. The explicit, zero-time parent selected through the RPC must win.
+        dao.create_game_association(str(steam_alias), "representative-child")
+        dao.create_game_association("third-leader", "hidden-child")
+        for game_id, checksum in (
+            (str(steam_alias), "left"),
+            ("representative-child", "left"),
+            ("representative-child", "right"),
+            ("hidden-child", "right"),
+        ):
+            dao.save_game_checksum(game_id, checksum, "SHA256", 1, None, None)
+        for game_id, seconds in (
+            (str(steam_alias), 10),
+            ("representative-child", 20),
+            ("hidden-child", 30),
+        ):
+            dao.save_play_time(datetime(2025, 1, 1, 12, 0), seconds, game_id)
+
+        snapshot = await plugin.get_game_association_component("representative-child")
+        self.assertEqual(snapshot["data"]["status"], "conflict")
+        confirmation = await plugin.confirm_game_association_component(
+            {
+                "anchor_game_id": "representative-child",
+                "proposed_parent_game_id": "explicit-parent",
+                "proposed_parent_game_name": "Explicit Parent",
+                "expected_parent_game_id": None,
+                "expected_fingerprint": snapshot["data"]["fingerprint"],
+                "selected_members": [
+                    {
+                        "game_id": str(steam_alias),
+                        "game_name": "Steam Shortcut Alias",
+                    },
+                    {
+                        "game_id": "representative-child",
+                        "game_name": "Representative Child",
+                    },
+                    {"game_id": "hidden-child", "game_name": "Hidden Child"},
+                    {"game_id": "third-leader", "game_name": "Third Leader"},
+                    {"game_id": "explicit-parent", "game_name": "Explicit Parent"},
+                ],
+            }
+        )
+
+        self.assertEqual(confirmation["success"], True)
+        self.assertEqual(
+            confirmation["data"]["confirmedParent"],
+            {
+                "gameId": canonical_parent["gameId"],
+                "gameName": canonical_parent["gameName"],
+            },
+        )
+        self.assertEqual(canonical_parent["recordedSeconds"], 0)
+        self.assertEqual(confirmation["data"]["aliases"], aliases)
+
+        all_time = await plugin.fetch_playtime_information()
+        daily = await plugin.daily_statistics_for_period(
+            {"start_date": "2025-01-01", "end_date": "2025-01-01"}
+        )
+        overall = await plugin.per_game_overall_statistics()
+        dictionary = await plugin.get_games_dictionary()
+        all_time_canonical = next(
+            entry
+            for entry in all_time
+            if entry["game"]["id"] == canonical_record["game"]["id"]
+        )
+        self.assertEqual(
+            {
+                key: all_time_canonical[key]
+                for key in ("game", "totalTime", "lastPlayedDate", "aliasesId")
+            },
+            canonical_record,
+        )
+        daily_canonical = daily["data"][0]["games"][0]
+        self.assertEqual(
+            {key: daily_canonical[key] for key in ("game", "totalTime")},
+            fixture["dailyProjection"],
+        )
+        overall_canonical = next(
+            entry
+            for entry in overall
+            if entry["game"]["id"] == canonical_record["game"]["id"]
+        )
+        self.assertEqual(
+            {key: overall_canonical[key] for key in ("game", "totalTime")},
+            fixture["overallProjection"],
+        )
+        canonical_dictionary = next(
+            entry
+            for entry in dictionary
+            if entry["game"]["id"] == canonical_record["game"]["id"]
+        )
+        self.assertEqual(
+            {
+                "game": canonical_dictionary["game"],
+                "fileGameIds": [
+                    checksum["game"]["id"] for checksum in canonical_dictionary["files"]
+                ],
+            },
+            fixture["dictionaryProjection"],
+        )
+
+        components = dao.get_game_identity_components()
+        for game_id in (
+            str(steam_alias),
+            "representative-child",
+            "hidden-child",
+            "third-leader",
+            "explicit-parent",
+        ):
+            self.assertEqual(components[game_id].canonical_id, "explicit-parent")
+
+    async def test_grouped_confirmation_rpc_rejects_stale_state_and_rolls_back(self):
+        plugin = self.main.Plugin()
+        await plugin._main()
+        await plugin.set_current_user("76561198077777774")
+        dao = plugin.association_manager.dao
+        for game_id in ("alpha", "beta", "gamma"):
+            dao.save_game_dict(game_id, game_id.title())
+            dao.save_game_checksum(game_id, "shared", "SHA256", 1, None, None)
+        dao.create_game_association("alpha", "beta")
+        dao.create_game_association("alpha", "gamma")
+
+        stale_snapshot = await plugin.get_game_association_component("beta")
+        dao.save_game_dict("late-member", "Late Member")
+        dao.save_game_checksum("late-member", "shared", "SHA256", 1, None, None)
+        stale_result = await plugin.confirm_game_association_component(
+            {
+                "anchor_game_id": "beta",
+                "proposed_parent_game_id": "beta",
+                "proposed_parent_game_name": "Beta",
+                "expected_parent_game_id": "alpha",
+                "expected_fingerprint": stale_snapshot["data"]["fingerprint"],
+                "selected_members": [
+                    {"game_id": "alpha", "game_name": "Alpha"},
+                    {"game_id": "beta", "game_name": "Beta"},
+                    {"game_id": "gamma", "game_name": "Gamma"},
+                ],
+            }
+        )
+        self.assertEqual(stale_result["success"], False)
+        self.assertEqual(stale_result["error"]["code"], "STALE_COMPONENT")
+
+        snapshot = await plugin.get_game_association_component("beta")
+        before = dao.get_all_game_associations()
+        original_create = dao._create_game_association
+        calls = 0
+
+        def fail_second_insert(connection, parent_game_id, child_game_id):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise sqlite3.IntegrityError("forced rollback")
+            return original_create(connection, parent_game_id, child_game_id)
+
+        with patch.object(dao, "_create_game_association", fail_second_insert):
+            rollback_result = await plugin.confirm_game_association_component(
+                {
+                    "anchor_game_id": "beta",
+                    "proposed_parent_game_id": "beta",
+                    "proposed_parent_game_name": "Beta",
+                    "expected_parent_game_id": "alpha",
+                    "expected_fingerprint": snapshot["data"]["fingerprint"],
+                    "selected_members": [
+                        {"game_id": "alpha", "game_name": "Alpha"},
+                        {"game_id": "beta", "game_name": "Beta"},
+                        {"game_id": "gamma", "game_name": "Gamma"},
+                        {"game_id": "late-member", "game_name": "Late Member"},
+                    ],
+                }
+            )
+
+        self.assertEqual(rollback_result["success"], False)
+        self.assertEqual(rollback_result["error"]["code"], "ASSOCIATION_UPDATE_FAILED")
+        self.assertEqual(dao.get_all_game_associations(), before)
 
     async def test_association_candidates_include_children_and_zero_time_identities(
         self,
