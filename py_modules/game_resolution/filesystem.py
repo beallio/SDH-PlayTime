@@ -22,6 +22,12 @@ class FilesystemProbeResult:
     file_header: bytes | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _SymlinkEvidence:
+    resolved_path: Path | None
+    exceeded_hop_limit: bool = False
+
+
 MountTableProvider = Callable[[], tuple[MountEntry, ...] | None]
 StatFunction = Callable[[Path], os.stat_result]
 LstatFunction = Callable[[Path], os.stat_result]
@@ -103,9 +109,13 @@ class FilesystemProbe:
     def _missing_reason(self, candidate: Path) -> ReasonCode:
         expected_volume = self._expected_removable_volume(candidate)
         if expected_volume is None:
-            link_target = self._link_target_evidence(candidate)
-            if link_target is not None:
-                expected_volume = self._expected_removable_volume(link_target)
+            link_evidence = self._link_target_evidence(candidate)
+            if link_evidence.exceeded_hop_limit:
+                return "probe_failure"
+            if link_evidence.resolved_path is not None:
+                expected_volume = self._expected_removable_volume(
+                    link_evidence.resolved_path
+                )
         if expected_volume is None:
             return "payload_missing"
         try:
@@ -118,18 +128,18 @@ class FilesystemProbe:
             return "drive_disconnected"
         return "payload_missing"
 
-    def _link_target_evidence(self, candidate: Path) -> Path | None:
+    def _link_target_evidence(self, candidate: Path) -> _SymlinkEvidence:
         """Follow a bounded leaf-or-ancestor symlink chain for volume evidence."""
 
         current = candidate
         for _ in range(MAX_SYMLINK_EVIDENCE_HOPS):
             link = self._first_symlink_component(current)
             if link is None:
-                return current
+                return _SymlinkEvidence(current)
             try:
                 target = Path(self._readlink_func(link))
             except OSError:
-                return None
+                return _SymlinkEvidence(None)
             if target.is_absolute():
                 resolved_target = target
             else:
@@ -137,9 +147,11 @@ class FilesystemProbe:
             try:
                 suffix = current.relative_to(link)
             except ValueError:
-                return None
+                return _SymlinkEvidence(None)
             current = resolved_target / suffix
-        return None
+        if self._first_symlink_component(current) is not None:
+            return _SymlinkEvidence(None, exceeded_hop_limit=True)
+        return _SymlinkEvidence(current)
 
     def _first_symlink_component(self, candidate: Path) -> Path | None:
         if not candidate.is_absolute():

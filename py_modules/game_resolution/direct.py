@@ -71,14 +71,21 @@ _KNOWN_SHELL_STEMS = frozenset(
     {
         "ash",
         "bash",
+        "busybox",
+        "cmd",
+        "csh",
         "dash",
         "fish",
         "ksh",
         "mksh",
+        "nu",
         "pdksh",
+        "powershell",
+        "pwsh",
         "rbash",
         "sh",
         "tcsh",
+        "xonsh",
         "zsh",
     }
 )

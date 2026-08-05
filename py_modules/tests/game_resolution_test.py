@@ -122,6 +122,73 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
                 self.assertEqual(result.payload_status, "unknown")
                 self.assertEqual(result.reason_code, "unsupported")
 
+    def test_rejects_common_shell_variants_directly_and_after_symlink_resolution(
+        self,
+    ) -> None:
+        def unexpected_stat(_: Path) -> os.stat_result:
+            self.fail("known shell executables must not reach the filesystem probe")
+
+        shell_variants = (
+            "csh",
+            "csh.exe",
+            "csh.AppImage",
+            "csh.x86_64",
+            "pwsh",
+            "pwsh.exe",
+            "pwsh.AppImage",
+            "pwsh.x86_64",
+            "powershell",
+            "powershell.exe",
+            "powershell.AppImage",
+            "powershell.x86_64",
+            "cmd",
+            "cmd.exe",
+            "cmd.AppImage",
+            "cmd.x86_64",
+            "xonsh",
+            "xonsh.exe",
+            "xonsh.AppImage",
+            "xonsh.x86_64",
+            "nu",
+            "nu.exe",
+            "nu.AppImage",
+            "nu.x86_64",
+            "busybox",
+            "busybox.exe",
+            "busybox.AppImage",
+            "busybox.x86_64",
+        )
+        direct_coordinator = self.coordinator(
+            FilesystemProbe(stat_func=unexpected_stat)
+        )
+
+        for shell_name in shell_variants:
+            with self.subTest(boundary="direct", shell_name=shell_name):
+                result = direct_coordinator.resolve_batch(
+                    [direct_entry(f"/home/deck/Games/{shell_name}")]
+                ).results[0]
+
+                self.assertEqual(result.payload_status, "unknown")
+                self.assertEqual(result.reason_code, "unsupported")
+
+            with self.subTest(boundary="symlink", shell_name=shell_name):
+                target = self.root / shell_name
+                target.write_bytes(
+                    b"MZ" if target.suffix.casefold() == ".exe" else b"\x7fELF"
+                )
+                target.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+                link = self.root / f"game-looking-{shell_name}.exe"
+                link.symlink_to(target)
+
+                result = (
+                    self.coordinator()
+                    .resolve_batch([direct_entry(str(link))])
+                    .results[0]
+                )
+
+                self.assertEqual(result.payload_status, "unknown")
+                self.assertEqual(result.reason_code, "unsupported")
+
     def test_rejects_shell_fragments_and_metadata_traversal_without_probing(
         self,
     ) -> None:
@@ -317,6 +384,46 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
 
         self.assertEqual(result.payload_status, "unreachable")
         self.assertEqual(result.reason_code, "drive_disconnected")
+
+    def test_symlinked_ancestor_evidence_allows_exactly_eight_hops(self) -> None:
+        links = [self.root / f"link-{index}" for index in range(8)]
+        for index, link in enumerate(links):
+            target = (
+                links[index + 1]
+                if index + 1 < len(links)
+                else Path("/run/media/deck/SDCARD")
+            )
+            link.symlink_to(target)
+        candidate = links[0] / "Games" / "Game.exe"
+
+        result = (
+            self.coordinator(FilesystemProbe(mount_entries=lambda: ()))
+            .resolve_batch([direct_entry(str(candidate))])
+            .results[0]
+        )
+
+        self.assertEqual(result.payload_status, "unreachable")
+        self.assertEqual(result.reason_code, "drive_disconnected")
+
+    def test_symlinked_ancestor_evidence_treats_a_ninth_hop_as_uncertain(self) -> None:
+        links = [self.root / f"link-{index}" for index in range(9)]
+        for index, link in enumerate(links):
+            target = (
+                links[index + 1]
+                if index + 1 < len(links)
+                else Path("/run/media/deck/SDCARD")
+            )
+            link.symlink_to(target)
+        candidate = links[0] / "Games" / "Game.exe"
+
+        result = (
+            self.coordinator(FilesystemProbe(mount_entries=lambda: ()))
+            .resolve_batch([direct_entry(str(candidate))])
+            .results[0]
+        )
+
+        self.assertEqual(result.payload_status, "unknown")
+        self.assertEqual(result.reason_code, "probe_failure")
 
     def test_revalidates_resolved_symlink_targets_against_wrapper_policy(self) -> None:
         for target_name in (
