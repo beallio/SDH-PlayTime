@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
 import zlib
@@ -8,6 +9,7 @@ import zlib
 from .models import (
     MAX_SHORTCUT_FIELD_LENGTH,
     NormalizedShortcutEvidence,
+    ReasonCode,
     ResolutionRequest,
 )
 
@@ -21,6 +23,14 @@ _HEROIC_FLATPAK_APP_ID: Final = "com.heroicgameslauncher.hgl"
 
 class ShortcutParseError(ValueError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class ShortcutCatalogOutcome:
+    """The only shortcut evidence a checksum coordinator may use."""
+
+    request: ResolutionRequest | None
+    reason_code: ReasonCode | None = None
 
 
 def shortcut_app_id(executable: str, app_name: str) -> int:
@@ -39,8 +49,18 @@ def _read_cstring(data: bytes, offset: int) -> tuple[str, int]:
         raise ShortcutParseError("invalid VDF string") from error
 
 
+@dataclass(slots=True)
+class _ParseState:
+    shortcut_records: int = 0
+
+
 def _parse_object(
-    data: bytes, offset: int, depth: int = 0
+    data: bytes,
+    offset: int,
+    state: _ParseState,
+    depth: int = 0,
+    *,
+    counts_shortcut_records: bool = False,
 ) -> tuple[dict[str, object], int]:
     if depth > _MAX_VDF_DEPTH:
         raise ShortcutParseError("nested VDF object is too deep")
@@ -55,8 +75,21 @@ def _parse_object(
             return result, offset
 
         key, offset = _read_cstring(data, offset)
+        normalized_key = key.casefold()
+        if value_type == 0 and counts_shortcut_records:
+            state.shortcut_records += 1
+            if state.shortcut_records > _MAX_SHORTCUTS_RECORDS:
+                raise ShortcutParseError("shortcuts VDF has too many records")
+        if normalized_key in result:
+            raise ShortcutParseError("duplicate VDF key")
         if value_type == 0:
-            value, offset = _parse_object(data, offset, depth + 1)
+            value, offset = _parse_object(
+                data,
+                offset,
+                state,
+                depth + 1,
+                counts_shortcut_records=(depth == 0 and normalized_key == "shortcuts"),
+            )
         elif value_type == 1:
             value, offset = _read_cstring(data, offset)
         elif value_type == 2:
@@ -66,21 +99,29 @@ def _parse_object(
             offset += 4
         else:
             raise ShortcutParseError("unsupported VDF field type")
-        result[key.casefold()] = value
+        result[normalized_key] = value
 
 
 def _parse_shortcuts(data: bytes) -> tuple[Mapping[str, object], ...]:
     if len(data) > _MAX_SHORTCUTS_FILE_BYTES:
         raise ShortcutParseError("shortcuts VDF exceeds the size limit")
-    root, _ = _parse_object(data, 0)
+    root, offset = _parse_object(data, 0, _ParseState())
+    if offset != len(data):
+        raise ShortcutParseError("trailing data in shortcuts VDF")
     shortcuts = root.get("shortcuts")
-    if not isinstance(shortcuts, Mapping) or len(shortcuts) > _MAX_SHORTCUTS_RECORDS:
+    if not isinstance(shortcuts, Mapping):
         raise ShortcutParseError("invalid shortcuts VDF root")
-    return tuple(
-        cast(Mapping[str, object], entry)
-        for entry in shortcuts.values()
-        if isinstance(entry, Mapping)
-    )
+    if not all(isinstance(entry, Mapping) for entry in shortcuts.values()):
+        raise ShortcutParseError("invalid shortcuts VDF record")
+    return tuple(cast(Mapping[str, object], entry) for entry in shortcuts.values())
+
+
+def _read_shortcuts_bytes(path: Path) -> bytes:
+    with path.open("rb") as source:
+        data = source.read(_MAX_SHORTCUTS_FILE_BYTES + 1)
+    if len(data) > _MAX_SHORTCUTS_FILE_BYTES:
+        raise ShortcutParseError("shortcuts VDF exceeds the size limit")
+    return data
 
 
 def _normalized_text(value: object) -> str | None:
@@ -212,6 +253,53 @@ def _request_from_record(record: Mapping[str, object]) -> ResolutionRequest | No
     return None
 
 
+def _record_for_app_id(
+    record: Mapping[str, object], app_id: int
+) -> tuple[tuple[tuple[str, object], ...], ResolutionRequest | None] | None:
+    executable = _normalized_text(record.get("exe"))
+    app_name = _normalized_text(record.get("appname"))
+    stored_app_id = record.get("appid")
+    stored_unsigned = (
+        stored_app_id & 0xFFFFFFFF if isinstance(stored_app_id, int) else None
+    )
+    derived_app_id = (
+        shortcut_app_id(executable, app_name)
+        if executable is not None and app_name is not None
+        else None
+    )
+
+    if app_id not in {stored_unsigned, derived_app_id}:
+        return None
+    if (
+        executable is None
+        or app_name is None
+        or stored_unsigned != app_id
+        or derived_app_id != app_id
+    ):
+        raise ShortcutParseError("shortcut record has an inconsistent app ID")
+
+    return _record_evidence(record), _request_from_record(record)
+
+
+def _record_evidence(record: Mapping[str, object]) -> tuple[tuple[str, object], ...]:
+    """Return a stable, complete record identity for cross-catalog deduplication."""
+
+    return tuple(
+        sorted((key, _freeze_record_value(value)) for key, value in record.items())
+    )
+
+
+def _freeze_record_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return tuple(
+            sorted(
+                (key, _freeze_record_value(nested_value))
+                for key, nested_value in value.items()
+            )
+        )
+    return value
+
+
 class SteamShortcutCatalog:
     """Build checksum-eligible requests from the active user's Steam VDF only."""
 
@@ -224,24 +312,42 @@ class SteamShortcutCatalog:
     ) -> None:
         self._user_home = user_home
         self._current_user_id = current_user_id
-        self._read_bytes = read_bytes or Path.read_bytes
+        self._read_bytes = read_bytes or _read_shortcuts_bytes
 
-    def get_request(self, app_id: int) -> ResolutionRequest | None:
+    def get_request(self, app_id: int) -> ShortcutCatalogOutcome:
+        seen_sources: set[Path] = set()
+        seen_records: set[tuple[tuple[str, object], ...]] = set()
+        matches: list[ResolutionRequest | None] = []
         for path in self._candidate_paths():
+            source = path.resolve(strict=False)
+            if source in seen_sources:
+                continue
+            seen_sources.add(source)
             try:
                 records = _parse_shortcuts(self._read_bytes(path))
-            except (OSError, ShortcutParseError):
+            except OSError:
                 continue
+            except ShortcutParseError:
+                return ShortcutCatalogOutcome(None, "malformed")
             for record in records:
-                executable = _normalized_text(record.get("exe"))
-                app_name = _normalized_text(record.get("appname"))
-                if (
-                    executable is not None
-                    and app_name is not None
-                    and shortcut_app_id(executable, app_name) == app_id
-                ):
-                    return _request_from_record(record)
-        return None
+                try:
+                    candidate = _record_for_app_id(record, app_id)
+                except ShortcutParseError:
+                    return ShortcutCatalogOutcome(None, "malformed")
+                if candidate is None:
+                    continue
+                evidence, request = candidate
+                if evidence not in seen_records:
+                    seen_records.add(evidence)
+                    matches.append(request)
+
+        if not matches:
+            return ShortcutCatalogOutcome(None, "missing")
+        if len(matches) > 1:
+            return ShortcutCatalogOutcome(None, "ambiguous")
+        if matches[0] is None:
+            return ShortcutCatalogOutcome(None, "unsupported")
+        return ShortcutCatalogOutcome(matches[0])
 
     def _candidate_paths(self) -> tuple[Path, ...]:
         user_id = self._current_user_id()

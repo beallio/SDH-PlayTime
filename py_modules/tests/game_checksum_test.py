@@ -20,6 +20,7 @@ from py_modules.game_resolution.models import (
     ResolutionResult,
 )
 from py_modules.game_resolution.steam_shortcuts import (
+    ShortcutCatalogOutcome,
     SteamShortcutCatalog,
     shortcut_app_id,
 )
@@ -61,23 +62,41 @@ class StaticShortcutSource:
         self.accepted_app_ids = accepted_app_ids or {1}
         self.app_ids: list[int] = []
 
-    def get_request(self, app_id: int) -> ResolutionRequest | None:
+    def get_request(self, app_id: int) -> ShortcutCatalogOutcome:
         self.app_ids.append(app_id)
-        return self.request if app_id in self.accepted_app_ids else None
+        if app_id not in self.accepted_app_ids:
+            return ShortcutCatalogOutcome(None, "missing")
+        return ShortcutCatalogOutcome(self.request, None if self.request else "missing")
 
 
-def write_shortcuts(path: Path, entries: list[dict[str, str]]) -> None:
+def write_shortcuts(path: Path, entries: list[dict[str, str | int]]) -> None:
     def string(key: str, value: str) -> bytes:
         return b"\x01" + key.encode() + b"\x00" + value.encode() + b"\x00"
+
+    def integer(key: str, value: int) -> bytes:
+        return (
+            b"\x02" + key.encode() + b"\x00" + value.to_bytes(4, "little", signed=True)
+        )
 
     contents = bytearray(b"\x00shortcuts\x00")
     for index, entry in enumerate(entries):
         contents.extend(b"\x00" + str(index).encode() + b"\x00")
-        for key, value in entry.items():
-            contents.extend(string(key, value))
+        fields = dict(entry)
+        if "appid" not in fields:
+            executable = fields.get("exe")
+            app_name = fields.get("appname")
+            assert isinstance(executable, str)
+            assert isinstance(app_name, str)
+            app_id = shortcut_app_id(executable, app_name)
+            fields["appid"] = app_id - 0x100000000
+        for key, value in fields.items():
+            if isinstance(value, int):
+                contents.extend(integer(key, value))
+            else:
+                contents.extend(string(key, value))
         contents.extend(b"\x08")
     contents.extend(b"\x08\x08")
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(contents)
 
 
@@ -225,6 +244,37 @@ class GameChecksumCoordinatorTest(unittest.TestCase):
         self.assertTrue(
             all(result.status == "unsupported_shortcut" for result in rejected)
         )
+        self.assertEqual(files.paths, [])
+
+    def test_ambiguous_catalog_records_do_not_reach_resolver_or_hasher(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            user_home = root / "home"
+            executable = "/games/Verified Game.exe"
+            app_name = "Verified Game"
+            write_shortcuts(
+                user_home / ".local/share/Steam/userdata/123/config/shortcuts.vdf",
+                [
+                    {"appname": app_name, "exe": executable},
+                    {
+                        "appname": app_name,
+                        "exe": executable,
+                        "launchoptions": "--alternate-launch-data",
+                    },
+                ],
+            )
+            resolver = StaticResolver(ResolutionResult.unknown())
+            files = RecordingFiles()
+            response = GameChecksumCoordinator(
+                resolver,
+                files,
+                SteamShortcutCatalog(user_home, lambda: "123"),
+            ).get_checksum(checksum_request(shortcut_app_id(executable, app_name)))
+
+        self.assertIsNone(response.checksum)
+        self.assertEqual(response.status, "unsupported_shortcut")
+        self.assertEqual(response.reason_code, "ambiguous")
+        self.assertEqual(resolver.entries, [])
         self.assertEqual(files.paths, [])
 
     def test_unsupported_sources_fail_closed_without_hashing(self) -> None:

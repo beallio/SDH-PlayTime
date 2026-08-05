@@ -10,6 +10,7 @@ from .models import (
     ResolutionRequest,
     ResolutionResult,
 )
+from .steam_shortcuts import ShortcutCatalogOutcome
 
 
 ChecksumStatus = Literal[
@@ -31,7 +32,7 @@ class FileHasher(Protocol):
 
 
 class ChecksumShortcutSource(Protocol):
-    def get_request(self, app_id: int) -> ResolutionRequest | None: ...
+    def get_request(self, app_id: int) -> ShortcutCatalogOutcome: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,13 +86,17 @@ class GameChecksumCoordinator:
         except RequestValidationError as error:
             return GameChecksumResult(None, "unsupported_shortcut", error.reason_code)
         try:
-            shortcut_evidence = self._shortcuts.get_request(app_id)
+            shortcut_outcome = self._shortcuts.get_request(app_id)
         except Exception:
             return GameChecksumResult(None, "payload_unavailable", "probe_failure")
-        if shortcut_evidence is None:
-            return GameChecksumResult(None, "unsupported_shortcut", "missing")
+        if shortcut_outcome.request is None:
+            return GameChecksumResult(
+                None,
+                "unsupported_shortcut",
+                shortcut_outcome.reason_code or "malformed",
+            )
 
-        resolution = self._single_resolution(shortcut_evidence)
+        resolution = self._single_resolution(shortcut_outcome.request)
         if isinstance(resolution, GameChecksumResult):
             return resolution
         if (
