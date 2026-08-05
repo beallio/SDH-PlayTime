@@ -30,6 +30,7 @@ export type GamePresenceReasonCode =
 	| "app_details_timeout"
 	| "resolver_failed"
 	| "resolver_incomplete"
+	| "resolver_inconsistent"
 	| "resolver_unknown"
 	| "resolver_unreachable"
 	| GameResolutionReasonCode;
@@ -62,13 +63,16 @@ export type GamePresenceCandidate = {
 };
 
 export type GamePresenceInventory = {
-	status: "complete" | "loading" | "failed" | "missing";
+	status: "complete" | "loading" | "partial" | "failed" | "missing";
 	apps: ReadonlyArray<{ id: string; name: string }>;
 };
 
 export type GamePresenceInventoryCompleteness =
 	| { status: "complete" }
-	| { status: "incomplete"; reason: "loading" | "failed" | "missing" };
+	| {
+			status: "incomplete";
+			reason: "loading" | "partial" | "failed" | "missing";
+	  };
 
 export type GamePresenceSnapshot = {
 	inventories: Record<GamePresenceSource, GamePresenceInventoryCompleteness>;
@@ -110,6 +114,18 @@ export type GamePresenceRefreshInput = Omit<
 	getCandidates: () => Promise<ReadonlyArray<GamePresenceRawCandidate>>;
 };
 
+/**
+ * Optional, read-only overrides for the production Steam runtime adapter. A caller may
+ * provide inventory status only when it has authoritative load-completion evidence.
+ */
+export type GamePresenceRuntimeAdapter = {
+	nativeInventory?: () => GamePresenceInventory;
+	nonSteamInventory?: () => GamePresenceInventory;
+	runningAppIds?: () => ReadonlyArray<number | string>;
+	getAppDetails?: (appId: number) => Promise<AppDetailsResult>;
+	nativeInstallProbe?: NativeInstallProbe;
+};
+
 type CandidateSeed = {
 	id: string;
 	name: string;
@@ -131,6 +147,10 @@ const sourceOrder: readonly GamePresenceSource[] = [
 ];
 const DEFAULT_DETAIL_CONCURRENCY = 4;
 const MAX_DETAIL_CONCURRENCY = 8;
+/** Steam shortcut IDs are CRC32 values with bit 31 set; native Steam AppIDs do not. */
+const STEAM_SHORTCUT_HIGH_BIT = 0x80000000;
+/** Keep every client call inside the backend coordinator's declared maximum. */
+const MAX_RESOLUTION_BATCH_SIZE = 32;
 
 function inventoryCompleteness(
 	inventory: GamePresenceInventory,
@@ -149,6 +169,25 @@ function toAppId(id: string) {
 	return Number.isSafeInteger(appId) && appId >= 0 ? appId : undefined;
 }
 
+/**
+ * Derive the source of a retained tracked row from its stored Steam AppID, not from
+ * mutable display text or playtime. Steam creates shortcut IDs as
+ * `crc32(exe + appname) | 0x80000000`; non-numeric and out-of-range legacy IDs stay
+ * unknown so they can never become historical by inference.
+ */
+function sourceFromStoredSteamAppId(
+	id: string,
+): GamePresenceSource | undefined {
+	if (!/^(?:0|[1-9]\d*)$/.test(id)) {
+		return;
+	}
+	const appId = Number(id);
+	if (!Number.isSafeInteger(appId) || appId > 0xffffffff) {
+		return;
+	}
+	return appId >= STEAM_SHORTCUT_HIGH_BIT ? "non_steam" : "native_steam";
+}
+
 function reason(
 	code: GamePresenceReasonCode,
 	source: GamePresenceReason["source"],
@@ -163,7 +202,7 @@ function buildSeeds(input: GamePresenceBuildInput) {
 			id: candidate.game.id,
 			name: candidate.game.name,
 			tracked: true,
-			source: candidate.source,
+			source: candidate.source ?? sourceFromStoredSteamAppId(candidate.game.id),
 			recentPlaytime: toFiniteNumber(candidate.recentPlaytime),
 			totalPlaytime: toFiniteNumber(
 				candidate.totalPlaytime ?? candidate.duration,
@@ -305,14 +344,14 @@ function deriveInventory(
 async function mapWithConcurrency<T, R>(
 	values: ReadonlyArray<T>,
 	limit: number,
-	callback: (value: T) => Promise<R>,
+	callback: (value: T, index: number) => Promise<R>,
 ): Promise<R[]> {
 	const results = new Array<R>(values.length);
 	let nextIndex = 0;
 	const worker = async () => {
 		while (nextIndex < values.length) {
 			const index = nextIndex++;
-			results[index] = await callback(values[index] as T);
+			results[index] = await callback(values[index] as T, index);
 		}
 	};
 	await Promise.all(
@@ -332,6 +371,48 @@ function normalizeConcurrency(value: number | undefined) {
 		return DEFAULT_DETAIL_CONCURRENCY;
 	}
 	return Math.max(1, Math.min(MAX_DETAIL_CONCURRENCY, value));
+}
+
+function markResolverUnknown(
+	candidate: GamePresenceCandidate,
+	code: "resolver_failed" | "resolver_incomplete" | "resolver_inconsistent",
+) {
+	candidate.availability = {
+		status: "unknown",
+		reasons: [reason(code, "resolver")],
+	};
+}
+
+function resolverResultMatchesRequest(
+	result: GameResolutionResult,
+	request: GameResolutionRequest,
+) {
+	return (
+		result.launcherKind === request.launcherKind &&
+		result.classificationStatus === request.classificationStatus
+	);
+}
+
+function hasConfirmedRegularPayload(
+	result: GameResolutionResult,
+	request: GameResolutionRequest,
+) {
+	if (
+		!resolverResultMatchesRequest(result, request) ||
+		result.payloadStatus !== "reachable" ||
+		result.payloadKind !== "file" ||
+		typeof result.payloadPath !== "string" ||
+		result.payloadPath.length === 0
+	) {
+		return false;
+	}
+	return request.launcherKind === "direct"
+		? result.metadataStatus === "not_requested" &&
+				result.provenance === "direct_executable"
+		: request.launcherKind === "heroic"
+			? result.metadataStatus === "resolved" &&
+				result.provenance === "heroic_metadata"
+			: false;
 }
 
 /**
@@ -424,15 +505,18 @@ export async function buildGamePresenceSnapshot(
 		}
 		return details;
 	};
-	const resolutionCandidates: Array<{
-		candidate: (typeof candidates)[number];
-		request: GameResolutionRequest;
-	}> = [];
+	const resolutionCandidates: Array<
+		| {
+				candidate: (typeof candidates)[number];
+				request: GameResolutionRequest;
+		  }
+		| undefined
+	> = new Array(toResolve.length);
 
 	await mapWithConcurrency(
 		toResolve,
 		normalizeConcurrency(input.detailConcurrency),
-		async (candidate) => {
+		async (candidate, index) => {
 			const appId = toAppId(candidate.id);
 			if (appId === undefined) {
 				candidate.availability = {
@@ -459,7 +543,18 @@ export async function buildGamePresenceSnapshot(
 				return;
 			}
 			const evidence = classifyShortcutEvidence(details.details);
-			resolutionCandidates.push({
+			if (
+				evidence.status !== "recognized" ||
+				(evidence.launcherKind !== "direct" &&
+					evidence.launcherKind !== "heroic")
+			) {
+				candidate.availability = {
+					status: "unknown",
+					reasons: [reason("resolver_unknown", "resolver")],
+				};
+				return;
+			}
+			resolutionCandidates[index] = {
 				candidate,
 				request: {
 					launcherKind: evidence.launcherKind,
@@ -467,55 +562,79 @@ export async function buildGamePresenceSnapshot(
 					normalized: evidence.normalized,
 					metadataCandidates: [],
 				},
-			});
+			};
 		},
 	);
 
-	if (resolutionCandidates.length > 0) {
+	const resolvableCandidates = resolutionCandidates.filter(
+		(
+			candidate,
+		): candidate is {
+			candidate: GamePresenceCandidate;
+			request: GameResolutionRequest;
+		} => candidate !== undefined,
+	);
+	for (
+		let start = 0;
+		start < resolvableCandidates.length;
+		start += MAX_RESOLUTION_BATCH_SIZE
+	) {
+		const batch = resolvableCandidates.slice(
+			start,
+			start + MAX_RESOLUTION_BATCH_SIZE,
+		);
 		try {
 			const response = await input.resolvePayloads(
-				resolutionCandidates.map(({ request }) => request),
+				batch.map(({ request }) => request),
 			);
-			for (const [index, { candidate }] of resolutionCandidates.entries()) {
-				const result = response.error ? undefined : response.results[index];
-				if (!result) {
-					candidate.availability = {
-						status: "unknown",
-						reasons: [
-							reason(
-								response.error ? "resolver_failed" : "resolver_incomplete",
-								"resolver",
-							),
-						],
-					};
+			if (response.error) {
+				for (const { candidate } of batch) {
+					markResolverUnknown(candidate, "resolver_failed");
+				}
+				continue;
+			}
+			if (response.results.length !== batch.length) {
+				for (const { candidate } of batch) {
+					markResolverUnknown(candidate, "resolver_incomplete");
+				}
+				continue;
+			}
+			for (const [index, { candidate, request }] of batch.entries()) {
+				const result = response.results[index];
+				if (!result || !resolverResultMatchesRequest(result, request)) {
+					markResolverUnknown(candidate, "resolver_inconsistent");
+					continue;
+				}
+				if (result.payloadStatus === "reachable") {
+					candidate.availability = hasConfirmedRegularPayload(result, request)
+						? { status: "reachable", reasons: [] }
+						: {
+								status: "unknown",
+								reasons: [reason("resolver_inconsistent", "resolver")],
+							};
 					continue;
 				}
 				candidate.availability =
-					result.payloadStatus === "reachable"
-						? { status: "reachable", reasons: [] }
-						: result.payloadStatus === "unreachable"
-							? {
-									status: "unreachable",
-									reasons: [
-										reason(
-											result.reasonCode ?? "resolver_unreachable",
-											"resolver",
-										),
-									],
-								}
-							: {
-									status: "unknown",
-									reasons: [
-										reason(result.reasonCode ?? "resolver_unknown", "resolver"),
-									],
-								};
+					result.payloadStatus === "unreachable"
+						? {
+								status: "unreachable",
+								reasons: [
+									reason(
+										result.reasonCode ?? "resolver_unreachable",
+										"resolver",
+									),
+								],
+							}
+						: {
+								status: "unknown",
+								reasons: [
+									reason(result.reasonCode ?? "resolver_unknown", "resolver"),
+								],
+							};
 			}
 		} catch {
-			for (const { candidate } of resolutionCandidates) {
-				candidate.availability = {
-					status: "unknown",
-					reasons: [reason("resolver_failed", "resolver")],
-				};
+			for (const { candidate } of batch) {
+				markResolverUnknown(candidate, "resolver_failed");
 			}
 		}
 	}
@@ -540,7 +659,8 @@ function runtimeNativeInventory(): GamePresenceInventory {
 		return { status: "missing", apps: [] };
 	}
 	return {
-		status: "complete",
+		// `allApps` exposes an observed cache, not a documented completion signal.
+		status: "partial",
 		apps: appStore.allApps
 			.filter((app) => app.app_type !== APP_TYPE.THIRD_PARTY)
 			.map((app) => ({ id: String(app.appid), name: app.display_name })),
@@ -553,7 +673,8 @@ function runtimeNonSteamInventory(): GamePresenceInventory {
 		collectionStore.deckDesktopApps
 	) {
 		return {
-			status: "complete",
+			// Presence of this collection does not prove its initial population finished.
+			status: "partial",
 			apps: Array.from(collectionStore.deckDesktopApps.apps.values()).map(
 				(app) => ({
 					id: String(app.appid),
@@ -566,7 +687,7 @@ function runtimeNonSteamInventory(): GamePresenceInventory {
 		return { status: "missing", apps: [] };
 	}
 	return {
-		status: "complete",
+		status: "partial",
 		apps: appStore.allApps
 			.filter((app) => app.app_type === APP_TYPE.THIRD_PARTY)
 			.map((app) => ({ id: String(app.appid), name: app.display_name })),
@@ -605,14 +726,18 @@ export async function refreshGamePresenceSnapshot(
 }
 
 /** Refreshes the current Steam runtime view without writing presence or associations. */
-export async function refreshCurrentGamePresenceSnapshot(): Promise<GamePresenceSnapshot> {
+export async function refreshCurrentGamePresenceSnapshot(
+	runtime: GamePresenceRuntimeAdapter = {},
+): Promise<GamePresenceSnapshot> {
 	return await buildGamePresenceSnapshot({
 		candidates: await Backend.getAssociationCandidates(),
-		nativeInventory: runtimeNativeInventory(),
-		nonSteamInventory: runtimeNonSteamInventory(),
-		runningAppIds: runtimeRunningAppIds(),
-		getAppDetails: getAppDetailsResult,
-		nativeInstallProbe: runtimeNativeInstallProbe(),
+		nativeInventory: runtime.nativeInventory?.() ?? runtimeNativeInventory(),
+		nonSteamInventory:
+			runtime.nonSteamInventory?.() ?? runtimeNonSteamInventory(),
+		runningAppIds: runtime.runningAppIds?.() ?? runtimeRunningAppIds(),
+		getAppDetails: runtime.getAppDetails ?? getAppDetailsResult,
+		nativeInstallProbe:
+			runtime.nativeInstallProbe ?? runtimeNativeInstallProbe(),
 		resolvePayloads: Backend.resolveGamePayloads,
 	});
 }

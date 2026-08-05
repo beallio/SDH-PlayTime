@@ -7,7 +7,9 @@ an installed/reachable payload and a retained historical record. Build a point-i
 candidate snapshot and a pure, fail-closed recommendation engine. Do not persist live
 presence or change associations in this unit. This plan depends on
 `zero-time-association-candidates`, `shortcut-evidence-classifier`,
-`game-resolution-core`, and all launcher adapters being merged to `remix`.
+and `game-resolution-core` being merged to `remix`. Direct executables and Heroic are
+the implemented non-Steam resolver paths. Lutris, Bottles, and EmuDeck/Steam ROM Manager
+are deliberately out of scope here and must remain fail-closed.
 
 **Slug used throughout this plan:** `game-parent-presence-ranking`
 

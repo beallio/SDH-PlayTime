@@ -1,10 +1,21 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { BACK_END_API } from "@src/constants";
 
-mock.module("@decky/api", () => ({ call: async () => undefined }));
+const backendCalls: unknown[][] = [];
+let backendCallHandler: (...args: unknown[]) => Promise<unknown>;
 
-const { buildGamePresenceSnapshot, refreshGamePresenceSnapshot } = await import(
-	"@src/app/gamePresence"
-);
+mock.module("@decky/api", () => ({
+	call: async (...args: unknown[]) => {
+		backendCalls.push(args);
+		return await backendCallHandler(...args);
+	},
+}));
+
+const {
+	buildGamePresenceSnapshot,
+	refreshCurrentGamePresenceSnapshot,
+	refreshGamePresenceSnapshot,
+} = await import("@src/app/gamePresence");
 type GamePresenceBuildInput =
 	import("@src/app/gamePresence").GamePresenceBuildInput;
 
@@ -21,7 +32,32 @@ const shortcutApp = {
 };
 
 function detailsResult() {
-	return { status: "success" as const, details: {} as AppDetails };
+	return {
+		status: "success" as const,
+		details: { strShortcutExe: '"/games/Game.exe"' } as AppDetails,
+	};
+}
+
+function directDetails(appId: number) {
+	return {
+		status: "success" as const,
+		details: {
+			strShortcutExe: `"/games/${appId}.exe"`,
+		} as AppDetails,
+	};
+}
+
+function reachableResult() {
+	return {
+		launcherKind: "direct" as const,
+		classificationStatus: "recognized" as const,
+		metadataStatus: "not_requested" as const,
+		payloadStatus: "reachable" as const,
+		payloadKind: "file" as const,
+		provenance: "direct_executable" as const,
+		reasonCode: null,
+		payloadPath: "/verified/game.exe",
+	};
 }
 
 function build(overrides: Partial<GamePresenceBuildInput> = {}) {
@@ -50,6 +86,56 @@ function build(overrides: Partial<GamePresenceBuildInput> = {}) {
 }
 
 describe("buildGamePresenceSnapshot", () => {
+	beforeEach(() => {
+		backendCalls.length = 0;
+		backendCallHandler = async () => undefined;
+	});
+
+	test("derives historical source from the stored Steam AppID when the backend sends only game and duration", async () => {
+		const rawCandidates = [
+			{ game: { id: "10", name: "Removed native" }, duration: 1 },
+			{
+				game: { id: String(0x80000001), name: "Removed shortcut" },
+				duration: 2,
+			},
+		];
+		const sourceOnly = await refreshGamePresenceSnapshot({
+			nativeInventory: { status: "complete", apps: [] },
+			nonSteamInventory: { status: "loading", apps: [] },
+			runningAppIds: [],
+			getAppDetails: async () => detailsResult(),
+			nativeInstallProbe: async () => ({ status: "installed" }),
+			resolvePayloads: async () => ({ results: [], error: null }),
+			getCandidates: async () => rawCandidates,
+		});
+
+		expect(
+			sourceOnly.candidates.map((candidate) => [
+				candidate.source,
+				candidate.inventory.status,
+			]),
+		).toEqual([
+			["native_steam", "historical"],
+			["non_steam", "unknown"],
+		]);
+
+		const reversedCompleteness = await refreshGamePresenceSnapshot({
+			nativeInventory: { status: "failed", apps: [] },
+			nonSteamInventory: { status: "complete", apps: [] },
+			runningAppIds: [],
+			getAppDetails: async () => detailsResult(),
+			nativeInstallProbe: async () => ({ status: "installed" }),
+			resolvePayloads: async () => ({ results: [], error: null }),
+			getCandidates: async () => rawCandidates,
+		});
+
+		expect(
+			reversedCompleteness.candidates.map(
+				(candidate) => candidate.inventory.status,
+			),
+		).toEqual(["unknown", "historical"]);
+	});
+
 	test("keeps source completeness independent while deriving current, historical, and unknown inventory", async () => {
 		const snapshot = await build({
 			candidates: [
@@ -178,11 +264,236 @@ describe("buildGamePresenceSnapshot", () => {
 		expect(reconnected.candidates[0]?.availability.status).toBe("reachable");
 	});
 
-	test("batches resolution, bounds detail reads, and does not write while refreshing", async () => {
+	test("batches resolution into 32-entry requests, preserves correlation, and fails only a malformed batch closed", async () => {
+		const shortcutIds = Array.from({ length: 65 }, (_, index) =>
+			String(0x80000000 + index + 1),
+		);
+		const batches: number[] = [];
+		const snapshot = await build({
+			candidates: shortcutIds.map((id) => ({
+				game: { id, name: `Shortcut ${id}` },
+				duration: 1,
+			})),
+			nonSteamInventory: {
+				status: "complete",
+				apps: shortcutIds.map((id) => ({ id, name: `Shortcut ${id}` })),
+			},
+			getAppDetails: async (appId) => directDetails(appId),
+			resolvePayloads: async (requests) => {
+				batches.push(requests.length);
+				if (batches.length === 2) {
+					return { results: [], error: "timeout" };
+				}
+				return { results: requests.map(() => reachableResult()), error: null };
+			},
+		});
+
+		expect(batches).toEqual([32, 32, 1]);
+		expect(snapshot.candidates[0]?.availability.status).toBe("reachable");
+		expect(snapshot.candidates[31]?.availability.status).toBe("reachable");
+		expect(snapshot.candidates[32]?.availability).toEqual({
+			status: "unknown",
+			reasons: [{ code: "resolver_failed", source: "resolver" }],
+		});
+		expect(snapshot.candidates[64]?.availability.status).toBe("reachable");
+
+		const thirtyThreeBatches: number[] = [];
+		await build({
+			candidates: shortcutIds.slice(0, 33).map((id) => ({
+				game: { id, name: `Shortcut ${id}` },
+				duration: 1,
+			})),
+			nonSteamInventory: {
+				status: "complete",
+				apps: shortcutIds
+					.slice(0, 33)
+					.map((id) => ({ id, name: `Shortcut ${id}` })),
+			},
+			getAppDetails: async (appId) => directDetails(appId),
+			resolvePayloads: async (requests) => {
+				thirtyThreeBatches.push(requests.length);
+				return { results: requests.map(() => reachableResult()), error: null };
+			},
+		});
+		expect(thirtyThreeBatches).toEqual([32, 1]);
+
+		const resolveByRequestIdentity = async (
+			requests: GameResolutionRequest[],
+		) => ({
+			results: requests.map((request) => {
+				const appId = Number(
+					request.normalized.executableTokens[0]?.match(/\d+/)?.[0],
+				);
+				return appId % 2 === 0
+					? reachableResult()
+					: {
+							...reachableResult(),
+							payloadStatus: "unreachable" as const,
+							payloadKind: "unknown" as const,
+							reasonCode: "payload_missing" as const,
+							payloadPath: null,
+						};
+			}),
+			error: null,
+		});
+		const orderIndependentInput = shortcutIds.slice(0, 33);
+		const fromOrder = async (ids: string[]) =>
+			await build({
+				candidates: ids.map((id) => ({
+					game: { id, name: `Shortcut ${id}` },
+					duration: 1,
+				})),
+				nonSteamInventory: {
+					status: "complete",
+					apps: ids.map((id) => ({ id, name: `Shortcut ${id}` })),
+				},
+				getAppDetails: async (appId) => directDetails(appId),
+				resolvePayloads: resolveByRequestIdentity,
+			});
+		const ordered = await fromOrder(orderIndependentInput);
+		const reversed = await fromOrder([...orderIndependentInput].reverse());
+		const availabilityById = (candidates: typeof ordered.candidates) =>
+			Object.fromEntries(
+				candidates.map((candidate) => [
+					candidate.id,
+					candidate.availability.status,
+				]),
+			);
+		expect(availabilityById(reversed.candidates)).toEqual(
+			availabilityById(ordered.candidates),
+		);
+	});
+
+	test("rejects resolver result-count and payload-proof mismatches without leaking payload paths", async () => {
+		const snapshot = await build({
+			candidates: [
+				{
+					game: { id: String(0x80000001), name: "Missing proof" },
+					duration: 1,
+				},
+				{ game: { id: String(0x80000002), name: "Directory" }, duration: 1 },
+			],
+			nonSteamInventory: {
+				status: "complete",
+				apps: [
+					{ id: String(0x80000001), name: "Missing proof" },
+					{ id: String(0x80000002), name: "Directory" },
+				],
+			},
+			getAppDetails: async (appId) => directDetails(appId),
+			resolvePayloads: async () => ({
+				results: [
+					{ ...reachableResult(), payloadPath: null },
+					{ ...reachableResult(), payloadKind: "directory" as const },
+				],
+				error: null,
+			}),
+		});
+
+		expect(
+			snapshot.candidates.map((candidate) => candidate.availability.status),
+		).toEqual(["unknown", "unknown"]);
+		expect(JSON.stringify(snapshot)).not.toContain("/verified/game.exe");
+
+		const malformed = await build({
+			candidates: [
+				{ game: { id: String(0x80000003), name: "Malformed" }, duration: 1 },
+			],
+			nonSteamInventory: {
+				status: "complete",
+				apps: [{ id: String(0x80000003), name: "Malformed" }],
+			},
+			getAppDetails: async (appId) => directDetails(appId),
+			resolvePayloads: async () => ({
+				results: [reachableResult(), reachableResult()],
+				error: null,
+			}),
+		});
+		expect(malformed.candidates[0]?.availability).toEqual({
+			status: "unknown",
+			reasons: [{ code: "resolver_incomplete", source: "resolver" }],
+		});
+
+		const missing = await build({
+			candidates: [
+				{
+					game: { id: String(0x80000004), name: "Missing result" },
+					duration: 1,
+				},
+			],
+			nonSteamInventory: {
+				status: "complete",
+				apps: [{ id: String(0x80000004), name: "Missing result" }],
+			},
+			getAppDetails: async (appId) => directDetails(appId),
+			resolvePayloads: async () => ({ results: [], error: null }),
+		});
+		expect(missing.candidates[0]?.availability).toEqual({
+			status: "unknown",
+			reasons: [{ code: "resolver_incomplete", source: "resolver" }],
+		});
+	});
+
+	test("uses explicit runtime inventory completeness and performs no candidate, association, or checksum writes", async () => {
+		const appId = String(0x80000001);
+		const inventoryStatuses = [
+			"loading",
+			"partial",
+			"failed",
+			"complete",
+		] as const;
+		for (const status of inventoryStatuses) {
+			backendCallHandler = async (method: unknown) => {
+				if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+					return [
+						{ game: { id: appId, name: "Runtime Shortcut" }, duration: 1 },
+					];
+				}
+				if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+					return { results: [reachableResult()], error: null };
+				}
+				throw new Error(`unexpected write or read RPC: ${String(method)}`);
+			};
+			const snapshot = await refreshCurrentGamePresenceSnapshot({
+				nativeInventory: () => ({ status: "complete", apps: [] }),
+				nonSteamInventory: () => ({
+					status,
+					apps: [{ id: appId, name: "Runtime Shortcut" }],
+				}),
+				runningAppIds: () => [],
+				getAppDetails: async (numericId) => directDetails(numericId),
+			});
+			expect(snapshot.candidates[0]?.inventory.status).toBe(
+				status === "complete" ? "current" : "unknown",
+			);
+			const removed = await refreshCurrentGamePresenceSnapshot({
+				nativeInventory: () => ({ status: "complete", apps: [] }),
+				nonSteamInventory: () => ({ status, apps: [] }),
+				runningAppIds: () => [],
+				getAppDetails: async (numericId) => directDetails(numericId),
+			});
+			expect(removed.candidates[0]?.inventory.status).toBe(
+				status === "complete" ? "historical" : "unknown",
+			);
+		}
+
+		const writeMethods: ReadonlySet<string> = new Set([
+			BACK_END_API.SAVE_GAME_CHECKSUM,
+			BACK_END_API.SAVE_GAME_CHECKSUM_BULK,
+			BACK_END_API.CONFIRM_GAME_ASSOCIATION_COMPONENT,
+			BACK_END_API.ADD_TIME,
+		]);
+		expect(
+			backendCalls.filter(
+				([method]) => typeof method === "string" && writeMethods.has(method),
+			),
+		).toEqual([]);
+	});
+
+	test("bounds detail reads and does not write while refreshing caller-provided sources", async () => {
 		let activeDetails = 0;
 		let peakDetails = 0;
 		let resolverCalls = 0;
-		const databaseWrites = 0;
 		const refreshInput: GamePresenceBuildInput = {
 			candidates: [
 				{
@@ -240,6 +551,5 @@ describe("buildGamePresenceSnapshot", () => {
 		expect(refreshed.candidates).toHaveLength(2);
 		expect(peakDetails).toBe(1);
 		expect(resolverCalls).toBe(2);
-		expect(databaseWrites).toBe(0);
 	});
 });
