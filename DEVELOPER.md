@@ -86,6 +86,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest \
   py_modules.tests.game_checksum_test \
   py_modules.tests.heroic_game_resolution_test
 bun test src/test/cachables.spec.ts src/test/steamPlayTimePatches.spec.ts src/test/gamePresence.spec.ts
+TZ=America/Los_Angeles bun test src/test/cachables.spec.ts src/test/steamPlayTimePatches.spec.ts
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_release_archive tests.test_vendored_safe_yaml
 scripts/orchestration/run-quality-gates
 ```

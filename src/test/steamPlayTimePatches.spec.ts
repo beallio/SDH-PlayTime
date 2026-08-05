@@ -238,10 +238,13 @@ describe("SteamPlayTimePatches", () => {
 
 		const app = createOverview(gameParentProjection.steamAlias, 1);
 		appStore.m_mapApps.set(gameParentProjection.steamAlias, app);
+		const expectedLocalLastDate =
+			new Date(gameParentProjection.canonicalRecord.lastPlayedDate).getTime() /
+			1000;
 
 		expect(app.minutes_playtime_forever).toBe("1.0");
 		expect(app.minutes_playtime_last_two_weeks).toBe(0);
-		expect(app.rt_last_time_played).toBe(1735732800);
+		expect(app.rt_last_time_played).toBe(expectedLocalLastDate);
 		expect(overall.get(String(gameParentProjection.steamAlias))).toBe(
 			overall.get(gameParentProjection.canonicalRecord.game.id),
 		);

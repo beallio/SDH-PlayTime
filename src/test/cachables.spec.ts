@@ -65,11 +65,14 @@ describe("buildPlayTimeMap", () => {
 
 	it("keeps an RPC-confirmed zero-time parent canonical over checksum leaders", () => {
 		const map = buildPlayTimeMap([gameParentProjection.canonicalRecord]);
+		const expectedLocalLastDate =
+			new Date(gameParentProjection.canonicalRecord.lastPlayedDate).getTime() /
+			1000;
 
 		const parent = map.get(gameParentProjection.canonicalRecord.game.id);
 		expect(parent).toEqual({
 			time: 60,
-			lastDate: 1735732800,
+			lastDate: expectedLocalLastDate,
 			isMerged: true,
 		});
 		for (const childId of gameParentProjection.aliases) {
