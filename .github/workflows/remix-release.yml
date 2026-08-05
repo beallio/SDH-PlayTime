@@ -1,0 +1,336 @@
+name: Remix quality and release
+
+on:
+  push:
+    branches: [remix]
+    tags: ['v*\+beallio.*']
+  pull_request:
+    branches: [remix]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Optional version to embed in the manual artifact
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: remix-automation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Complete quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Run backend tests
+        run: uv run --with pytest pytest
+
+      - name: Set up Bun for frontend tests
+        uses: oven-sh/setup-bun@v2
+
+      - name: Run frontend tests
+        run: bun test
+
+      - name: TypeScript check
+        run: pnpm exec tsc --noEmit
+
+      - name: Biome formatting check
+        run: pnpm exec biome format .
+
+      - name: Biome lint check
+        run: pnpm exec biome lint .
+
+      - name: Build production frontend
+        run: pnpm build
+
+      - name: Upload production frontend
+        uses: actions/upload-artifact@v7
+        with:
+          name: remix-production-dist-${{ github.run_id }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  package:
+    name: Build canonical remix archive
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      asset_name: ${{ steps.metadata.outputs.asset_name }}
+      artifact_name: ${{ steps.metadata.outputs.artifact_name }}
+    steps:
+      - name: Check out source and tag history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Restore production frontend
+        uses: actions/download-artifact@v8
+        with:
+          name: remix-production-dist-${{ github.run_id }}
+          path: dist/
+
+      - name: Confirm quality build is present
+        run: test -f dist/index.js
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frontend dependencies for Decky compatibility build
+        run: pnpm install --frozen-lockfile
+
+      - name: Derive release metadata
+        id: metadata
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          short_sha="$(git rev-parse --short=7 "$GITHUB_SHA" | tr '[:upper:]' '[:lower:]')"
+          checked_package_version="$(node -p "require('./package.json').version")"
+          checked_plugin_version="$(node -p "require('./plugin.json').version")"
+
+          if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ]; then
+            version="${DISPATCH_VERSION:-$checked_package_version}"
+            asset_name="SDH-PlayTime-beallio-remix-manual-${version}.zip"
+          elif [ "$GITHUB_REF_TYPE" = 'tag' ]; then
+            version="${GITHUB_REF_NAME#v}"
+            if [ "$checked_package_version" != "$version" ] || [ "$checked_plugin_version" != "$version" ]; then
+              echo "Tag version must exactly match package.json and plugin.json."
+              exit 1
+            fi
+            asset_name="SDH-PlayTime-beallio-remix-${GITHUB_REF_NAME}.zip"
+          elif [ "$GITHUB_EVENT_NAME" = 'push' ]; then
+            base_version="${checked_package_version%%+*}"
+            version="${base_version}+beallio.g${short_sha}"
+            asset_name='SDH-PlayTime-beallio-remix-nightly.zip'
+          else
+            base_version="${checked_package_version%%+*}"
+            version="${base_version}+beallio.g${short_sha}"
+            asset_name="SDH-PlayTime-beallio-remix-pr-${short_sha}.zip"
+          fi
+
+          case "$version" in
+            '' | *[!0-9A-Za-z.+-]*)
+              echo "Unsafe archive version: $version"
+              exit 1
+              ;;
+          esac
+
+          artifact_name="remix-package-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          {
+            echo "version=$version"
+            echo "asset_name=$asset_name"
+            echo "artifact_name=$artifact_name"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download pinned Decky CLI
+        env:
+          DECKY_CLI_VERSION: '0.0.8'
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/decky-cli
+          gh release download "$DECKY_CLI_VERSION" \
+            --repo SteamDeckHomebrew/cli \
+            --pattern 'decky-linux-x86_64' \
+            --dir /tmp/decky-cli
+          chmod +x /tmp/decky-cli/decky-linux-x86_64
+
+      - name: Run Decky compatibility build
+        run: |
+          sudo /tmp/decky-cli/decky-linux-x86_64 plugin build \
+            -b \
+            -o /tmp/decky-build \
+            -s directory \
+            "$GITHUB_WORKSPACE"
+          shopt -s nullglob
+          decky_archives=(/tmp/decky-build/*.zip)
+          if [ "${#decky_archives[@]}" -ne 1 ]; then
+            echo "Expected exactly one Decky compatibility ZIP."
+            exit 1
+          fi
+          unzip -tq "${decky_archives[0]}"
+
+      - name: Clear compatibility build output from trusted frontend
+        run: |
+          dist_dir="$GITHUB_WORKSPACE/dist"
+          case "$dist_dir" in
+            "$GITHUB_WORKSPACE"/dist) ;;
+            *)
+              echo "Refusing to clear an unexpected dist target: $dist_dir"
+              exit 1
+              ;;
+          esac
+          sudo rm -rf -- "$dist_dir"
+          mkdir -p "$dist_dir"
+          sudo chown "$(id -u):$(id -g)" "$dist_dir"
+
+      - name: Restore quality frontend for canonical package
+        uses: actions/download-artifact@v8
+        with:
+          name: remix-production-dist-${{ github.run_id }}
+          path: dist/
+
+      - name: Confirm canonical package uses quality build
+        run: test -f dist/index.js
+
+      - name: Build and validate canonical archive
+        env:
+          VERSION: ${{ steps.metadata.outputs.version }}
+          ASSET_NAME: ${{ steps.metadata.outputs.asset_name }}
+        run: |
+          mkdir -p release
+          python3 tools/release_archive.py build \
+            --source "$GITHUB_WORKSPACE" \
+            --version "$VERSION" \
+            --output "release/$ASSET_NAME"
+          python3 tools/release_archive.py validate \
+            --archive "release/$ASSET_NAME" \
+            --version "$VERSION"
+
+      - name: Upload canonical archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.metadata.outputs.artifact_name }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-remix-nightly:
+    name: Publish rolling remix nightly
+    if: github.event_name == 'push' && github.ref == 'refs/heads/remix'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    concurrency:
+      group: remix-nightly-publication
+      cancel-in-progress: true
+    steps:
+      - name: Check out complete history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Refuse to publish a stale branch tip
+        run: |
+          git fetch origin remix
+          test "$(git rev-parse origin/remix)" = "$GITHUB_SHA"
+
+      - name: Download canonical archive
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.package.outputs.artifact_name }}
+          path: release/
+
+      - name: Advance rolling tag and publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET_NAME: ${{ needs.package.outputs.asset_name }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          archive="release/$ASSET_NAME"
+          checksum="${archive}.sha256"
+          test -f "$archive"
+          test -f "$checksum"
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git tag --force --annotate remix-nightly \
+            --message "Remix nightly build for ${GITHUB_SHA}" \
+            "$GITHUB_SHA"
+          git push --force origin refs/tags/remix-nightly
+
+          if gh release view remix-nightly >/dev/null 2>&1; then
+            gh release edit remix-nightly \
+              --target "$GITHUB_SHA" \
+              --title "PlayTime remix nightly (${VERSION})" \
+              --prerelease \
+              --latest=false \
+              --notes "Automated remix nightly for ${GITHUB_SHA}."
+            gh release upload remix-nightly "$archive" "$checksum" --clobber
+          else
+            gh release create remix-nightly \
+              --target "$GITHUB_SHA" \
+              --title "PlayTime remix nightly (${VERSION})" \
+              --prerelease \
+              --latest=false \
+              --notes "Automated remix nightly for ${GITHUB_SHA}." \
+              "$archive" "$checksum"
+          fi
+
+  publish-stable-release:
+    name: Publish stable remix release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Check out complete history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download canonical archive
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.package.outputs.artifact_name }}
+          path: release/
+
+      - name: Publish stable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET_NAME: ${{ needs.package.outputs.asset_name }}
+        run: |
+          archive="release/$ASSET_NAME"
+          checksum="${archive}.sha256"
+          test -f "$archive"
+          test -f "$checksum"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "PlayTime remix ${GITHUB_REF_NAME}" \
+              --prerelease=false
+            gh release upload "$GITHUB_REF_NAME" "$archive" "$checksum" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "PlayTime remix ${GITHUB_REF_NAME}" \
+              --generate-notes \
+              "$archive" "$checksum"
+          fi
