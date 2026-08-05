@@ -13,7 +13,7 @@ export const BACK_END_API = {
 	APPLY_MANUAL_TIME_CORRECTION: "apply_manual_time_correction",
 	GET_GAME: "get_game",
 	HAS_MIN_REQUIRED_PYTHON_VERSION: "has_min_required_python_version",
-	GET_FILE_SHA256: "get_file_sha256",
+	GET_GAME_CHECKSUM: "get_game_checksum",
 	RESOLVE_GAME_PAYLOADS: "resolve_game_payloads",
 	GET_GAMES_DICTIONARY: "get_games_dictionary",
 	GET_ASSOCIATION_CANDIDATES: "get_association_candidates",

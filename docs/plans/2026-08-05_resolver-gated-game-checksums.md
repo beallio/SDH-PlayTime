@@ -5,8 +5,9 @@
 The current checksum flow accepts a frontend-derived path and can hash a launcher,
 emulator, Wine/Proton binary, or stale shortcut target instead of the actual game.
 Require a backend-confirmed reachable payload before hashing while preserving fail-closed
-behavior for unsupported games. This plan depends on `game-resolution-core` and all four
-launcher adapter plans being merged to `remix`.
+behavior for unsupported games. This plan depends on `game-resolution-core` and the Heroic
+adapter being merged to `remix`. This unit supports direct executables and Heroic only;
+Lutris, Bottles, and EmuDeck/Steam ROM Manager remain explicitly unsupported.
 
 **Slug used throughout this plan:** `resolver-gated-game-checksums`
 
@@ -131,10 +132,11 @@ git commit -m "docs(plan): add resolver-gated-game-checksums implementation plan
 5. Update checksum settings UI/types only enough to distinguish unsupported shortcut,
    missing metadata, unavailable payload, and hash failure. Do not add parent-selection
    UI in this unit.
-6. Cover direct, Heroic, Lutris, Bottles, and EmuDeck fixtures; payload changes; game
-   updates; external drive disconnect/reconnect; directories; symlinks; malformed RPCs;
-   and first-match ambiguity. Verify existing reachable direct-executable checksum flows
-   continue working.
+6. Cover direct and Heroic fixtures; payload changes; game updates; external drive
+   disconnect/reconnect; directories; symlinks; malformed RPCs; and first-match ambiguity.
+   Cover Lutris, Bottles, and EmuDeck/Steam ROM Manager as explicitly unsupported,
+   fail-closed sources. Verify existing reachable direct-executable checksum flows continue
+   working.
 
 ---
 
@@ -161,8 +163,9 @@ The round is not complete unless:
 
 ## Verification
 
-1. Generate checksums for one reachable fixture per resolver and verify the digest is of
-   the game payload, never the launcher or runner.
+1. Generate checksums for one reachable direct fixture and one reachable Heroic fixture and
+   verify the digest is of the game payload, never the launcher or runner. Verify Lutris,
+   Bottles, and EmuDeck/Steam ROM Manager return no checksum as unsupported sources.
 2. Submit an arbitrary path alongside an unrelated app ID and verify the backend rejects
    it rather than hashing.
 3. Disconnect a fixture volume and verify no digest is returned; reconnect it and verify
