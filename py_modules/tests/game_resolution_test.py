@@ -2,6 +2,7 @@ import os
 import stat
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -106,6 +107,20 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
 
         self.assertEqual(result.payload_status, "unknown")
         self.assertEqual(result.reason_code, "unsupported")
+
+    def test_rejects_shell_basenames_and_variants_without_probing(self) -> None:
+        def unexpected_stat(_: Path) -> os.stat_result:
+            self.fail("known shell executables must not reach the filesystem probe")
+
+        coordinator = self.coordinator(FilesystemProbe(stat_func=unexpected_stat))
+        for name in ("sh", "bash", "bash.x86_64", "dash.exe", "Fish.AppImage"):
+            with self.subTest(name=name):
+                result = coordinator.resolve_batch(
+                    [direct_entry(f"/home/deck/Games/{name}")]
+                ).results[0]
+
+                self.assertEqual(result.payload_status, "unknown")
+                self.assertEqual(result.reason_code, "unsupported")
 
     def test_rejects_shell_fragments_and_metadata_traversal_without_probing(
         self,
@@ -255,6 +270,26 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
         self.assertEqual(disconnected.payload_status, "unreachable")
         self.assertEqual(missing.payload_status, "unreachable")
 
+    def test_mount_table_uncertainty_is_not_a_conclusive_missing_payload(self) -> None:
+        candidate = "/run/media/deck/SDCARD/Games/Game.exe"
+
+        def unavailable_mounts() -> tuple[MountEntry, ...] | None:
+            return None
+
+        def failed_mounts() -> tuple[MountEntry, ...] | None:
+            raise OSError("mountinfo unavailable")
+
+        for mount_entries in (unavailable_mounts, failed_mounts):
+            with self.subTest(mount_entries=mount_entries.__name__):
+                result = (
+                    self.coordinator(FilesystemProbe(mount_entries=mount_entries))
+                    .resolve_batch([direct_entry(candidate)])
+                    .results[0]
+                )
+
+                self.assertEqual(result.payload_status, "unknown")
+                self.assertEqual(result.reason_code, "probe_failure")
+
     def test_broken_symlink_preserves_disconnected_volume_evidence(self) -> None:
         target = Path("/run/media/deck/SDCARD/Games/Game.exe")
         link = self.root / "Game.exe"
@@ -269,8 +304,31 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
         self.assertEqual(result.payload_status, "unreachable")
         self.assertEqual(result.reason_code, "drive_disconnected")
 
+    def test_symlinked_ancestor_preserves_disconnected_volume_evidence(self) -> None:
+        library = self.root / "Library"
+        library.symlink_to("/run/media/deck/SDCARD")
+        candidate = library / "Games" / "Game.exe"
+
+        result = (
+            self.coordinator(FilesystemProbe(mount_entries=lambda: ()))
+            .resolve_batch([direct_entry(str(candidate))])
+            .results[0]
+        )
+
+        self.assertEqual(result.payload_status, "unreachable")
+        self.assertEqual(result.reason_code, "drive_disconnected")
+
     def test_revalidates_resolved_symlink_targets_against_wrapper_policy(self) -> None:
-        for target_name in ("wine", "proton", "Heroic.AppImage", "Game.sh"):
+        for target_name in (
+            "wine",
+            "proton",
+            "Heroic.AppImage",
+            "Game.sh",
+            "bash",
+            "bash.x86_64",
+            "dash.exe",
+            "Fish.AppImage",
+        ):
             with self.subTest(target_name=target_name):
                 target = self.root / target_name
                 target.touch()
@@ -368,6 +426,50 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
             [item.payload_status for item in result.results],
             ["unknown", "unknown", "reachable"],
         )
+
+    def test_stalled_resolvers_are_bounded_by_worker_admission(self) -> None:
+        release = threading.Event()
+        call_count = 0
+        call_lock = threading.Lock()
+
+        class PermanentlyStalledAdapter:
+            launcher_kind = "direct"
+
+            def resolve(self, request: ResolutionRequest) -> ResolutionResult:
+                nonlocal call_count
+                with call_lock:
+                    call_count += 1
+                release.wait()
+                return ResolutionResult.reachable(
+                    request, request.normalized.shortcut_exe or ""
+                )
+
+        coordinator = GameResolutionCoordinator(
+            adapters=[PermanentlyStalledAdapter()],
+            entry_timeout_seconds=0.01,
+            batch_timeout_seconds=0.1,
+            max_workers=2,
+        )
+        started_at = time.monotonic()
+        try:
+            batches = [
+                coordinator.resolve_batch([direct_entry("/games/Slow.exe")] * 4)
+                for _ in range(3)
+            ]
+            elapsed = time.monotonic() - started_at
+
+            self.assertLess(elapsed, 0.2)
+            self.assertEqual(call_count, 2)
+            self.assertEqual(coordinator.live_worker_count, 2)
+            self.assertEqual(
+                [[item.reason_code for item in batch.results] for batch in batches],
+                [["timeout"] * 4] * 3,
+            )
+        finally:
+            release.set()
+
+        self.assertTrue(coordinator.wait_for_workers_to_finish(timeout_seconds=0.2))
+        self.assertEqual(coordinator.live_worker_count, 0)
 
     def test_mount_probe_uses_expected_kind_not_mode_bits(self) -> None:
         payload = self.root / "WindowsGame.exe"

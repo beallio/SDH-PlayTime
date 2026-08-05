@@ -67,6 +67,21 @@ _KNOWN_EMULATOR_STEMS = frozenset(
         "ryujinx",
     }
 )
+_KNOWN_SHELL_STEMS = frozenset(
+    {
+        "ash",
+        "bash",
+        "dash",
+        "fish",
+        "ksh",
+        "mksh",
+        "pdksh",
+        "rbash",
+        "sh",
+        "tcsh",
+        "zsh",
+    }
+)
 _UNSAFE_LITERAL_CHARACTERS = frozenset("?*[]{}|&;<>")
 _WRAPPER_SUFFIXES = (".desktop", ".py", ".sh")
 _NATIVE_SUFFIXES = frozenset({".x86", ".x86_64"})
@@ -100,6 +115,7 @@ def _is_known_shared_or_launcher(path: str) -> bool:
         or _has_stem_variant(stem, _SHARED_OR_LAUNCHER_BINARIES)
         or _has_stem_variant(stem, _KNOWN_LAUNCHER_STEMS)
         or _has_stem_variant(stem, _KNOWN_EMULATOR_STEMS)
+        or _has_stem_variant(stem, _KNOWN_SHELL_STEMS)
         or "launcher" in name
         or "emulator" in name
     )

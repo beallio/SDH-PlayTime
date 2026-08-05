@@ -19,6 +19,7 @@ from .models import (
 
 DEFAULT_ENTRY_TIMEOUT_SECONDS = 0.25
 DEFAULT_BATCH_TIMEOUT_SECONDS = 2.0
+DEFAULT_MAX_RESOLUTION_WORKERS = 4
 
 
 class ResolutionAdapter(Protocol):
@@ -46,16 +47,38 @@ class GameResolutionCoordinator:
         *,
         entry_timeout_seconds: float = DEFAULT_ENTRY_TIMEOUT_SECONDS,
         batch_timeout_seconds: float = DEFAULT_BATCH_TIMEOUT_SECONDS,
+        max_workers: int = DEFAULT_MAX_RESOLUTION_WORKERS,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
-        if entry_timeout_seconds <= 0 or batch_timeout_seconds <= 0:
-            raise ValueError("resolution time budgets must be positive")
+        if entry_timeout_seconds <= 0 or batch_timeout_seconds <= 0 or max_workers <= 0:
+            raise ValueError("resolution time budgets and worker cap must be positive")
         if adapters is None:
             adapters = (DirectExecutableAdapter(FilesystemProbe()),)
         self._adapter_registry = AdapterRegistry(adapters)
         self._entry_timeout_seconds = entry_timeout_seconds
         self._batch_timeout_seconds = batch_timeout_seconds
         self._monotonic = monotonic
+        self._worker_slots = threading.BoundedSemaphore(max_workers)
+        self._worker_lock = threading.Lock()
+        self._workers: set[threading.Thread] = set()
+
+    @property
+    def live_worker_count(self) -> int:
+        """Return the number of resolver calls currently occupying worker slots."""
+
+        with self._worker_lock:
+            return sum(worker.is_alive() for worker in self._workers)
+
+    def wait_for_workers_to_finish(self, timeout_seconds: float) -> bool:
+        """Wait for admitted work to return, primarily for controlled shutdown/tests."""
+
+        deadline = time.monotonic() + timeout_seconds
+        while self.live_worker_count:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(remaining, 0.01))
+        return True
 
     def resolve_batch(self, entries: object) -> BatchResolutionResult:
         if not isinstance(entries, list) or len(entries) > MAX_RESOLUTION_BATCH_SIZE:
@@ -117,12 +140,18 @@ class GameResolutionCoordinator:
                 results.append(result)
         return BatchResolutionResult(tuple(results))
 
-    @staticmethod
     def _resolve_with_budget(
+        self,
         adapter: ResolutionAdapter,
         request: ResolutionRequest,
         timeout_seconds: float,
     ) -> tuple[ResolutionResult | None, bool]:
+        # Timed-out Python threads cannot safely be cancelled. Admit only a fixed
+        # number of calls instead, and report saturation using the existing timeout
+        # contract rather than queueing work behind a permanently stalled resolver.
+        if not self._worker_slots.acquire(blocking=False):
+            return None, True
+
         outcome: Queue[ResolutionResult | Exception] = Queue(maxsize=1)
 
         def resolve() -> None:
@@ -130,9 +159,25 @@ class GameResolutionCoordinator:
                 outcome.put(adapter.resolve(request))
             except Exception as error:
                 outcome.put(error)
+            finally:
+                with self._worker_lock:
+                    self._workers.discard(threading.current_thread())
+                self._worker_slots.release()
 
-        worker = threading.Thread(target=resolve, daemon=True)
-        worker.start()
+        worker = threading.Thread(
+            target=resolve,
+            daemon=True,
+            name="game-resolution-worker",
+        )
+        with self._worker_lock:
+            self._workers.add(worker)
+        try:
+            worker.start()
+        except RuntimeError:
+            with self._worker_lock:
+                self._workers.discard(worker)
+            self._worker_slots.release()
+            return None, False
         try:
             item = outcome.get(timeout=timeout_seconds)
         except Empty:

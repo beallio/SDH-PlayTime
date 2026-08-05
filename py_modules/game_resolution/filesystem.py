@@ -101,46 +101,59 @@ class FilesystemProbe:
             return FilesystemProbeResult(None, "probe_failure")
 
     def _missing_reason(self, candidate: Path) -> ReasonCode:
-        expected_volume = next(
-            (
-                volume
-                for missing_path in (candidate, self._link_target_evidence(candidate))
-                if (volume := self._expected_removable_volume(missing_path)) is not None
-            ),
-            None,
-        )
+        expected_volume = self._expected_removable_volume(candidate)
+        if expected_volume is None:
+            link_target = self._link_target_evidence(candidate)
+            if link_target is not None:
+                expected_volume = self._expected_removable_volume(link_target)
         if expected_volume is None:
             return "payload_missing"
         try:
             mounts = self._mount_entries()
-        except OSError:
-            return "payload_missing"
+        except Exception:
+            return "probe_failure"
         if mounts is None:
-            return "payload_missing"
+            return "probe_failure"
         if not any(entry.mount_point == expected_volume for entry in mounts):
             return "drive_disconnected"
         return "payload_missing"
 
-    def _link_target_evidence(self, candidate: Path) -> Path:
-        """Resolve only an existing symlink chain for absent-volume evidence."""
+    def _link_target_evidence(self, candidate: Path) -> Path | None:
+        """Follow a bounded leaf-or-ancestor symlink chain for volume evidence."""
 
         current = candidate
         for _ in range(MAX_SYMLINK_EVIDENCE_HOPS):
+            link = self._first_symlink_component(current)
+            if link is None:
+                return current
             try:
-                link_status = self._lstat_func(current)
+                target = Path(self._readlink_func(link))
             except OSError:
-                break
-            if not stat.S_ISLNK(link_status.st_mode):
-                break
-            try:
-                target = Path(self._readlink_func(current))
-            except OSError:
-                break
+                return None
             if target.is_absolute():
-                current = target
+                resolved_target = target
             else:
-                current = Path(os.path.abspath(current.parent / target))
-        return current
+                resolved_target = Path(os.path.abspath(link.parent / target))
+            try:
+                suffix = current.relative_to(link)
+            except ValueError:
+                return None
+            current = resolved_target / suffix
+        return None
+
+    def _first_symlink_component(self, candidate: Path) -> Path | None:
+        if not candidate.is_absolute():
+            return None
+        current = Path(candidate.anchor)
+        for component in candidate.parts[1:]:
+            current /= component
+            try:
+                status = self._lstat_func(current)
+            except OSError:
+                return None
+            if stat.S_ISLNK(status.st_mode):
+                return current
+        return None
 
     @staticmethod
     def _expected_removable_volume(candidate: Path) -> Path | None:
