@@ -9,19 +9,80 @@ const FLATPAK_LAUNCHERS = {
 
 const SHARED_OR_LAUNCHER_BINARIES = new Set([
 	"bottles",
+	"bottles.appimage",
 	"bottles-cli",
+	"cartridges",
 	"flatpak",
+	"gamescope",
+	"gamehub",
 	"heroic",
 	"heroic.appimage",
+	"itch",
+	"legendary",
 	"lutris",
+	"minigalaxy",
 	"proton",
+	"rpcs3",
+	"rpcs3.appimage",
 	"retroarch",
+	"ryujinx",
+	"ryujinx.appimage",
 	"steam",
 	"wine",
 	"wine64",
 ]);
 
 const WRAPPER_SUFFIXES = [".desktop", ".py", ".sh"];
+
+const DIRECT_PAYLOAD_SUFFIXES = [".appimage", ".exe", ".x86", ".x86_64"];
+
+const ROM_FILE_SUFFIXES = new Set([
+	".3ds",
+	".bin",
+	".chd",
+	".cso",
+	".cue",
+	".d64",
+	".gba",
+	".gb",
+	".gbc",
+	".gcm",
+	".gen",
+	".iso",
+	".mdf",
+	".n64",
+	".nds",
+	".nes",
+	".pbp",
+	".rvz",
+	".sfc",
+	".smc",
+	".vpk",
+	".wbfs",
+	".wii",
+	".xci",
+	".z64",
+]);
+
+const EMUDECK_LAUNCHER_GRAMMARS = {
+	"dolphin-emu.sh": { romOptions: ["-e"], positionalRom: false },
+	"mgba.sh": { romOptions: ["-f"], positionalRom: false },
+	"pcsx2-qt.sh": { romOptions: [], positionalRom: true },
+	"ppsspp.sh": { romOptions: ["-g"], positionalRom: false },
+	"retroarch.sh": { romOptions: [], positionalRom: true },
+} as const;
+
+const EMULATOR_OPTIONS_WITH_OPERANDS = new Set([
+	"--bios",
+	"--config",
+	"--core",
+	"--log-file",
+	"--metadata",
+	"--save",
+	"--shader",
+	"--state",
+	"-L",
+]);
 
 interface ParsedTokens {
 	tokens: string[];
@@ -55,7 +116,7 @@ function stripNestedQuotes(value: string): string {
 	) {
 		result = result.slice(1, -1).trim();
 	}
-	return decodeUriComponent(result);
+	return result;
 }
 
 /**
@@ -163,11 +224,25 @@ function hasFlatpakLauncher(
 ): boolean {
 	const lowercaseLauncherId = launcherId.toLowerCase();
 	return (
-		normalized.flatpakAppId?.toLowerCase() === lowercaseLauncherId ||
-		normalized.commandTokens.some(
-			(token) => token.toLowerCase() === lowercaseLauncherId,
-		)
+		basename(getExecutableToken(normalized)) === "flatpak" &&
+		normalized.flatpakAppId?.toLowerCase() === lowercaseLauncherId &&
+		normalized.launchOptionTokens[0] === "run" &&
+		normalized.launchOptionTokens[1]?.toLowerCase() === lowercaseLauncherId
 	);
+}
+
+function isHeroicExecutable(path: string | undefined): boolean {
+	const name = basename(path);
+	return name === "heroic" || name === "heroic.appimage";
+}
+
+function isLutrisExecutable(path: string | undefined): boolean {
+	const name = basename(path);
+	return name === "lutris" || Boolean(name?.includes("lutris-wrapper"));
+}
+
+function isBottlesExecutable(path: string | undefined): boolean {
+	return basename(path) === "bottles-cli";
 }
 
 function isKnownLauncherBinary(path: string | undefined): boolean {
@@ -177,6 +252,7 @@ function isKnownLauncherBinary(path: string | undefined): boolean {
 	}
 	return (
 		SHARED_OR_LAUNCHER_BINARIES.has(name) ||
+		name.includes("launcher") ||
 		name.includes("lutris-wrapper") ||
 		name.includes("emulator") ||
 		name.startsWith("dolphin") ||
@@ -185,8 +261,16 @@ function isKnownLauncherBinary(path: string | undefined): boolean {
 	);
 }
 
+function hasUnresolvedShellExpression(path: string): boolean {
+	return path.includes("$") || path.includes("`");
+}
+
 function isDirectPayload(path: string | undefined): path is string {
-	if (!path?.startsWith("/") || isKnownLauncherBinary(path)) {
+	if (
+		!path?.startsWith("/") ||
+		isKnownLauncherBinary(path) ||
+		hasUnresolvedShellExpression(path)
+	) {
 		return false;
 	}
 
@@ -201,37 +285,30 @@ function isDirectPayload(path: string | undefined): path is string {
 		return false;
 	}
 
-	return (
-		lowercasePath.endsWith(".appimage") ||
-		lowercasePath.endsWith(".exe") ||
-		lowercasePath.endsWith(".x86") ||
-		lowercasePath.endsWith(".x86_64") ||
-		!basename(path)?.includes(".")
+	return DIRECT_PAYLOAD_SUFFIXES.some((suffix) =>
+		lowercasePath.endsWith(suffix),
 	);
 }
 
-function isEmudeckLauncher(path: string | undefined): boolean {
-	if (!path) {
-		return false;
+function getEmudeckLauncherGrammar(path: string | undefined) {
+	if (!path || !/\/emulation\/tools\/launchers\//i.test(path)) {
+		return;
 	}
-	return /\/emulation\/tools\/launchers\/[^/]+\.(?:sh|appimage)$/i.test(path);
+	const launcherName = basename(path);
+	return launcherName
+		? EMUDECK_LAUNCHER_GRAMMARS[
+				launcherName as keyof typeof EMUDECK_LAUNCHER_GRAMMARS
+			]
+		: undefined;
 }
 
 function isRomPath(token: string): boolean {
 	const lowercaseToken = token.toLowerCase();
 	return (
-		/^\/.+\.[a-z0-9]{1,10}$/i.test(token) &&
+		token.startsWith("/") &&
+		!hasUnresolvedShellExpression(token) &&
 		!isKnownLauncherBinary(token) &&
-		![
-			".appimage",
-			".dll",
-			".dylib",
-			".exe",
-			".sh",
-			".so",
-			".x86",
-			".x86_64",
-		].some((suffix) => lowercaseToken.endsWith(suffix))
+		[...ROM_FILE_SUFFIXES].some((suffix) => lowercaseToken.endsWith(suffix))
 	);
 }
 
@@ -255,7 +332,7 @@ function parseUrl(token: string): URL | undefined {
 
 function getUrlValues(url: URL, names: string[]): string[] {
 	return names.flatMap((name) =>
-		url.searchParams.getAll(name).map((value) => decodeUriComponent(value)),
+		url.searchParams.getAll(name),
 	);
 }
 
@@ -298,15 +375,14 @@ function classifyHeroic(
 	normalized: NormalizedShortcutFields,
 ): ShortcutEvidenceClassification | undefined {
 	const executable = getExecutableToken(normalized);
-	const heroicUrls = normalized.commandTokens
+	const heroicUrls = normalized.launchOptionTokens
 		.map(parseUrl)
 		.filter(
 			(url): url is URL => url?.protocol === "heroic:" && url.host === "launch",
 		);
 	const isHeroicLauncher =
 		hasFlatpakLauncher(normalized, FLATPAK_LAUNCHERS.heroic) ||
-		basename(executable)?.startsWith("heroic") ||
-		heroicUrls.length > 0;
+		isHeroicExecutable(executable);
 
 	if (!isHeroicLauncher) {
 		return;
@@ -357,14 +433,12 @@ function classifyLutris(
 	normalized: NormalizedShortcutFields,
 ): ShortcutEvidenceClassification | undefined {
 	const executable = getExecutableToken(normalized);
-	const lutrisUrls = normalized.commandTokens
+	const lutrisUrls = normalized.launchOptionTokens
 		.map(parseUrl)
 		.filter((url): url is URL => url?.protocol === "lutris:");
 	const isLutrisLauncher =
 		hasFlatpakLauncher(normalized, FLATPAK_LAUNCHERS.lutris) ||
-		basename(executable)?.startsWith("lutris") ||
-		basename(executable)?.includes("lutris-wrapper") ||
-		lutrisUrls.length > 0;
+		isLutrisExecutable(executable);
 
 	if (!isLutrisLauncher) {
 		return;
@@ -412,6 +486,9 @@ function optionValues(tokens: string[], aliases: string[]): string[] {
 	const values: string[] = [];
 	for (let index = 0; index < tokens.length; index++) {
 		const token = tokens[index];
+		if (token === "--") {
+			break;
+		}
 		for (const alias of aliases) {
 			if (token === alias && tokens[index + 1] && tokens[index + 1] !== "--") {
 				values.push(tokens[index + 1]);
@@ -434,35 +511,32 @@ function classifyBottles(
 	normalized: NormalizedShortcutFields,
 ): ShortcutEvidenceClassification | undefined {
 	const executable = getExecutableToken(normalized);
-	const hasBottlesCommand = normalized.commandTokens.some(
-		(token) => basename(token) === "bottles-cli",
-	);
 	const isBottlesLauncher =
 		hasFlatpakLauncher(normalized, FLATPAK_LAUNCHERS.bottles) ||
-		basename(executable) === "bottles-cli" ||
-		hasBottlesCommand;
+		isBottlesExecutable(executable);
 
 	if (!isBottlesLauncher) {
 		return;
 	}
 
-	const commandIndex = normalized.commandTokens.findIndex(
-		(token) => basename(token) === "bottles-cli",
-	);
-	const tokens =
-		commandIndex >= 0
-			? normalized.commandTokens.slice(commandIndex + 1)
-			: normalized.launchOptionTokens;
-	if (!tokens.includes("run")) {
+	const tokens = isBottlesExecutable(executable)
+		? normalized.launchOptionTokens
+		: normalized.launchOptionTokens.slice(2);
+	if (tokens[0] !== "bottles-cli" && !isBottlesExecutable(executable)) {
 		return ambiguous("bottles");
 	}
+	const runTokens = isBottlesExecutable(executable) ? tokens : tokens.slice(1);
+	if (runTokens[0] !== "run") {
+		return ambiguous("bottles");
+	}
+	const options = runTokens.slice(1);
 
-	const bottle = uniqueValue(optionValues(tokens, ["-b", "--bottle"]));
-	const program = uniqueValue(optionValues(tokens, ["-p", "--program"]));
-	const name = uniqueValue(optionValues(tokens, ["--name"]));
-	const id = uniqueValue(optionValues(tokens, ["--id", "--program-id"]));
+	const bottle = uniqueValue(optionValues(options, ["-b", "--bottle"]));
+	const program = uniqueValue(optionValues(options, ["-p", "--program"]));
+	const name = uniqueValue(optionValues(options, ["--name"]));
+	const id = uniqueValue(optionValues(options, ["--id", "--program-id"]));
 	const executableValue = uniqueValue(
-		optionValues(tokens, ["-e", "--executable"]),
+		optionValues(options, ["-e", "--executable"]),
 	);
 	const identityHints = [
 		program.value,
@@ -500,18 +574,93 @@ function classifyBottles(
 function classifyEmudeck(
 	normalized: NormalizedShortcutFields,
 ): ShortcutEvidenceClassification | undefined {
-	if (!isEmudeckLauncher(getExecutableToken(normalized))) {
+	const grammar = getEmudeckLauncherGrammar(getExecutableToken(normalized));
+	if (!grammar) {
 		return;
 	}
 
-	const romPath = uniqueValue(
-		normalized.commandTokens.filter((token) => isRomPath(token)),
-	);
+	const romCandidates: string[] = [];
+	const tokens = normalized.launchOptionTokens;
+	for (let index = 0; index < tokens.length; index++) {
+		const token = tokens[index];
+		if (token === "--") {
+			break;
+		}
+
+		if (grammar.romOptions.includes(token as never)) {
+			const candidate = tokens[index + 1];
+			if (candidate && isRomPath(candidate)) {
+				romCandidates.push(candidate);
+			}
+			index++;
+			continue;
+		}
+
+		if (EMULATOR_OPTIONS_WITH_OPERANDS.has(token)) {
+			index++;
+			continue;
+		}
+
+		if (token.startsWith("-")) {
+			continue;
+		}
+
+		if (grammar.positionalRom && isRomPath(token)) {
+			romCandidates.push(token);
+		}
+	}
+
+	const romPath = uniqueValue(romCandidates);
 	if (romPath.isAmbiguous || !romPath.value) {
 		return ambiguous("emudeck-srm");
 	}
 
 	return recognized("emudeck-srm", { romPath: romPath.value }, romPath.value);
+}
+
+function launcherAnchors(
+	normalized: NormalizedShortcutFields,
+): Exclude<ShortcutLauncherKind, "direct" | "emudeck-srm" | "unknown">[] {
+	const executable = getExecutableToken(normalized);
+	const anchors: Exclude<
+		ShortcutLauncherKind,
+		"direct" | "emudeck-srm" | "unknown"
+	>[] = [];
+	if (
+		isHeroicExecutable(executable) ||
+		hasFlatpakLauncher(normalized, FLATPAK_LAUNCHERS.heroic)
+	) {
+		anchors.push("heroic");
+	}
+	if (
+		isLutrisExecutable(executable) ||
+		hasFlatpakLauncher(normalized, FLATPAK_LAUNCHERS.lutris)
+	) {
+		anchors.push("lutris");
+	}
+	if (
+		isBottlesExecutable(executable) ||
+		hasFlatpakLauncher(normalized, FLATPAK_LAUNCHERS.bottles)
+	) {
+		anchors.push("bottles");
+	}
+	return anchors;
+}
+
+function launcherProtocols(
+	normalized: NormalizedShortcutFields,
+): Array<"heroic" | "lutris"> {
+	const protocols = new Set<"heroic" | "lutris">();
+	for (const token of normalized.commandTokens) {
+		const url = parseUrl(token);
+		if (url?.protocol === "heroic:" && url.host === "launch") {
+			protocols.add("heroic");
+		}
+		if (url?.protocol === "lutris:") {
+			protocols.add("lutris");
+		}
+	}
+	return [...protocols];
 }
 
 /**
@@ -538,6 +687,20 @@ export function classifyShortcutEvidence(
 		return { ...unknown(), normalized };
 	}
 
+	const anchors = launcherAnchors(normalized);
+	const protocols = launcherProtocols(normalized);
+	if (anchors.length > 1 || protocols.length > 1) {
+		return {
+			...ambiguous(anchors[0] ?? protocols[0] ?? "heroic"),
+			normalized,
+		};
+	}
+	if (protocols.some((protocol) => !anchors.includes(protocol))) {
+		return anchors[0]
+			? { ...ambiguous(anchors[0]), normalized }
+			: { ...unknown(), normalized };
+	}
+
 	for (const parser of parsers) {
 		const result = parser(normalized);
 		if (result) {
@@ -558,8 +721,18 @@ export function classifyShortcutEvidence(
 
 // NOTE(ynhhoJ): https://github.com/0u73r-h34v3n/chrono-deck/blob/master/src/utils/steam/getPathToGameFileByLaunchCommand.ts
 export default function getEmudeckPathToGame(launchCommand: string) {
-	const evidence = classifyShortcutEvidence({ strShortcutExe: launchCommand });
-	return evidence.launcherKind === "emudeck-srm"
+	const normalized = normalizeShortcutEvidence({ strShortcutExe: launchCommand });
+	if (parseTokens(launchCommand).hasUnterminatedQuote) {
+		return;
+	}
+	const [executable, ...launchOptionTokens] = normalized.executableTokens;
+	const evidence = classifyEmudeck({
+		...normalized,
+		executableTokens: executable ? [executable] : [],
+		launchOptionTokens,
+		commandTokens: executable ? [executable, ...launchOptionTokens] : [],
+	});
+	return evidence?.launcherKind === "emudeck-srm"
 		? evidence.payloadPath
 		: undefined;
 }
