@@ -57,6 +57,9 @@ jobs:
           uvx ty@0.0.64 check main.py py_modules --exclude 'py_modules/tests/**' \
             --exclude 'py_modules/yaml/**'
 
+      - name: Build production frontend for release quality
+        run: pnpm build
+
       - name: Run backend tests
         run: uv run --no-project --with pytest pytest
 
@@ -75,8 +78,6 @@ jobs:
       - name: Biome lint check
         run: pnpm exec biome lint .
 
-      - name: Build production frontend
-        run: pnpm build
 
       - name: Upload production frontend
         uses: actions/upload-artifact@v7
