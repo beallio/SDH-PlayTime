@@ -699,6 +699,35 @@ class TestGamesDictionaryWithAssociations(AbstractDatabaseTest):
         # Should have all 3 games
         self.assertEqual(len(result), 3)
 
+    def test_association_candidates_keep_children_and_zero_time_identities(self):
+        from py_modules.games import Games
+
+        self.dao.save_game_dict("zero-parent", "")
+        self._create_game("child-game", "Child Game")
+        self.dao.create_game_association("zero-parent", "child-game")
+
+        games = Games(dao=self.dao, association_manager=self.association_manager)
+        candidates = games.get_association_candidates()
+        legacy_dictionary = games.get_dictionary()
+
+        self.assertEqual(
+            candidates,
+            [
+                {
+                    "game": {"id": "child-game", "name": "Child Game"},
+                    "duration": 3600,
+                },
+                {
+                    "game": {"id": "zero-parent", "name": "Unknown Game"},
+                    "duration": 0,
+                },
+            ],
+        )
+        self.assertEqual(
+            [entry["game"]["id"] for entry in legacy_dictionary],
+            ["zero-parent"],
+        )
+
 
 class TestGetGameWithAssociations(AbstractDatabaseTest):
     """Test that get_by_id properly combines playtime from associated games."""

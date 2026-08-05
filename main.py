@@ -340,6 +340,16 @@ class Plugin:
             decky.logger.exception("[get_games_dictionary] Unhandled exception: %s", e)
             raise
 
+    async def get_association_candidates(self):
+        try:
+            self._ensure_services_initialized()
+            return convert_keys_to_camel_case(self.games.get_association_candidates())
+        except Exception as e:
+            decky.logger.exception(
+                "[get_association_candidates] Unhandled exception: %s", e
+            )
+            raise
+
     async def save_game_checksum(self, dto_dict: AddGameChecksumDict):
         try:
             self._ensure_services_initialized()

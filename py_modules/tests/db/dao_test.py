@@ -64,6 +64,71 @@ class TestDao(AbstractDatabaseTest):
             self.dao.save_game_checksum(game_id, "shared", "SHA256", 1, None, None)
         return member_ids
 
+    def test_zero_time_identity_can_be_confirmed_as_parent_without_overall_time(
+        self,
+    ):
+        self.dao.save_game_dict("tracked-child", "Tracked Child")
+        self.dao.save_game_dict("zero-parent", "Zero Parent")
+
+        zero_time_parent = self.dao.get_game("zero-parent")
+
+        self.assertIsNotNone(zero_time_parent)
+        self.assertEqual(zero_time_parent.time, 0)
+        snapshot = self.dao.get_game_association_component("tracked-child")
+        confirmation = self.dao.confirm_game_association_component(
+            AssociationComponentConfirmationRequest(
+                anchor_game_id=snapshot.anchor_game_id,
+                proposed_parent_game_id="zero-parent",
+                proposed_parent_game_name="Zero Parent",
+                expected_parent_game_id=snapshot.expected_parent_game_id,
+                expected_fingerprint=snapshot.fingerprint,
+                selected_members=(
+                    AssociationComponentMember("tracked-child", "Tracked Child"),
+                    AssociationComponentMember("zero-parent", "Zero Parent"),
+                ),
+            )
+        )
+
+        self.assertEqual(confirmation.confirmed_parent.id, "zero-parent")
+        self.assertEqual(
+            {
+                (association["parent_game_id"], association["child_game_id"])
+                for association in self.dao.get_all_game_associations()
+            },
+            {("zero-parent", "tracked-child")},
+        )
+
+        refreshed_snapshot = self.dao.get_game_association_component("zero-parent")
+        self.dao.confirm_game_association_component(
+            AssociationComponentConfirmationRequest(
+                anchor_game_id=refreshed_snapshot.anchor_game_id,
+                proposed_parent_game_id="zero-parent",
+                proposed_parent_game_name="Renamed Zero Parent",
+                expected_parent_game_id=refreshed_snapshot.expected_parent_game_id,
+                expected_fingerprint=refreshed_snapshot.fingerprint,
+                selected_members=(
+                    AssociationComponentMember("tracked-child", "Tracked Child"),
+                    AssociationComponentMember("zero-parent", "Renamed Zero Parent"),
+                ),
+            )
+        )
+
+        with closing(sqlite3.connect(self.database_file)) as connection:
+            self.assertEqual(
+                connection.execute(
+                    "SELECT COUNT(*) FROM overall_time WHERE game_id = ?",
+                    ("zero-parent",),
+                ).fetchone(),
+                (0,),
+            )
+            self.assertEqual(
+                connection.execute(
+                    "SELECT name, COUNT(*) FROM game_dict WHERE game_id = ?",
+                    ("zero-parent",),
+                ).fetchone(),
+                ("Renamed Zero Parent", 1),
+            )
+
     def test_grouped_association_read_has_sorted_members_and_fingerprint(self):
         self._create_checksum_star()
 
@@ -189,6 +254,8 @@ class TestDao(AbstractDatabaseTest):
     def test_component_confirmation_rejects_member_owned_by_another_component(self):
         self._create_checksum_star()
         self.dao.save_game_dict("outsider", "Outsider")
+        self.dao.save_game_dict("outsider-parent", "Outsider Parent")
+        self.dao.create_game_association("outsider-parent", "outsider")
         snapshot = self.dao.get_game_association_component("beta")
         before = self.dao.get_all_game_associations()
 

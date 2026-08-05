@@ -120,6 +120,18 @@ class GameDictionary:
 
 
 @dataclass(slots=True)
+class AssociationCandidate:
+    game: Game
+    duration: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "game": {"id": self.game.id, "name": self.game.name},
+            "duration": self.duration,
+        }
+
+
+@dataclass(slots=True)
 class AssociationComponentError(Exception):
     code: str
     message: str

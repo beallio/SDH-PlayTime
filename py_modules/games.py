@@ -106,6 +106,11 @@ class Games:
 
         return result
 
+    def get_association_candidates(self) -> List[Dict]:
+        return [
+            candidate.to_dict() for candidate in self.dao.get_association_candidates()
+        ]
+
     def save_game_checksum(
         self,
         game_id: str,

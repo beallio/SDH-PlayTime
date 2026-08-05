@@ -17,6 +17,7 @@ from py_modules.schemas.request import (
     MAX_ASSOCIATION_GAME_ID_LENGTH,
 )
 from py_modules.schemas.response import (
+    AssociationCandidate,
     AssociationComponentConfirmation,
     AssociationComponentError,
     AssociationComponentSnapshot,
@@ -550,7 +551,11 @@ class Dao:
                 existing_member_ids = set(component_member_ids)
                 added_member_ids = set(selected_member_ids) - existing_member_ids
                 components = self._get_game_identity_components(connection)
-                if any(game_id in components for game_id in added_member_ids):
+                if any(
+                    len(components[game_id].members) > 1
+                    for game_id in added_member_ids
+                    if game_id in components
+                ):
                     raise AssociationComponentError(
                         code="UNEXPECTED_MEMBER",
                         message=(
@@ -1133,16 +1138,52 @@ class Dao:
             SELECT
                 gd.game_id,
                 gd.name,
-                ot.duration as time
+                COALESCE(ot.duration, 0) AS time
             FROM
                 game_dict gd
-            INNER JOIN overall_time ot
+            LEFT JOIN overall_time ot
                 ON gd.game_id = ot.game_id
             WHERE
                 gd.game_id = ?
             """,
             (game_id,),
         ).fetchone()
+
+    def get_association_candidates(self) -> List[AssociationCandidate]:
+        """Read all tracked identities without legacy association-child filtering."""
+
+        with self._db.transactional() as connection:
+            return self._get_association_candidates(connection)
+
+    def _get_association_candidates(
+        self, connection: sqlite3.Connection
+    ) -> List[AssociationCandidate]:
+        connection.row_factory = _row_to_game_info_dto
+        candidates = connection.execute(
+            """
+            WITH candidate_ids AS (
+                SELECT game_id FROM game_dict
+                UNION
+                SELECT parent_game_id FROM game_association
+                UNION
+                SELECT child_game_id FROM game_association
+            )
+            SELECT
+                candidate_ids.game_id,
+                COALESCE(NULLIF(gd.name, ''), 'Unknown Game') AS name,
+                COALESCE(ot.duration, 0) AS time
+            FROM candidate_ids
+            LEFT JOIN game_dict gd ON gd.game_id = candidate_ids.game_id
+            LEFT JOIN overall_time ot ON ot.game_id = candidate_ids.game_id
+            ORDER BY candidate_ids.game_id
+            """
+        ).fetchall()
+        return [
+            AssociationCandidate(
+                Game(candidate.game_id, candidate.name), candidate.time
+            )
+            for candidate in candidates
+        ]
 
     def get_games_dictionary(self) -> List[GameDictionary]:
         with self._db.transactional() as connection:
