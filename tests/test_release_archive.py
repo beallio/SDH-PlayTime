@@ -33,6 +33,7 @@ class ReleaseArchiveTests(unittest.TestCase):
         (self.source / "LICENSE").write_text("license\n")
         (self.source / "main.py").write_text("print('main')\n")
         (self.source / "README.md").write_text("readme\n")
+        (self.source / "DEVELOPER.md").write_text("developer guide\n")
         for name in ("package.json", "plugin.json"):
             (self.source / name).write_text(
                 json.dumps({"name": "PlayTime", "version": "old"})
@@ -52,6 +53,13 @@ class ReleaseArchiveTests(unittest.TestCase):
             b"cache"
         )
         (self.source / "py_modules" / "test_runtime.py").write_text("test tooling\n")
+        (self.source / "py_modules" / "tests" / "fixtures").mkdir(parents=True)
+        (self.source / "py_modules" / "tests" / "helpers.py").write_text(
+            "test helper\n"
+        )
+        (self.source / "py_modules" / "tests" / "fixtures" / "fixture.json").write_text(
+            "{}\n"
+        )
         shutil.copy2(ROOT / "requirements-vendored.txt", self.source)
         shutil.copy2(ROOT / "py_modules" / "safe_yaml.py", self.source / "py_modules")
         shutil.copytree(
@@ -129,6 +137,7 @@ class ReleaseArchiveTests(unittest.TestCase):
                 "package.json",
                 "plugin.json",
                 "README.md",
+                "DEVELOPER.md",
                 "requirements-vendored.txt",
                 "dist/",
                 "py_modules/",
@@ -147,6 +156,10 @@ class ReleaseArchiveTests(unittest.TestCase):
                 self.assertIn(f"SDH-PlayTime/{path}", names)
             self.assertNotIn("SDH-PlayTime/py_modules/test_runtime.py", names)
             self.assertNotIn("SDH-PlayTime/py_modules/__pycache__/runtime.pyc", names)
+            self.assertNotIn("SDH-PlayTime/py_modules/tests/helpers.py", names)
+            self.assertNotIn(
+                "SDH-PlayTime/py_modules/tests/fixtures/fixture.json", names
+            )
             for manifest_name in ("package.json", "plugin.json"):
                 manifest = json.loads(zip_file.read(f"SDH-PlayTime/{manifest_name}"))
                 self.assertEqual(
@@ -198,9 +211,22 @@ class ReleaseArchiveTests(unittest.TestCase):
         ):
             release_archive.validate_archive(archive, "3.3.0+beallio.1")
 
+    def test_validation_rejects_test_modules_and_fixtures(self) -> None:
+        archive = self._build("3.3.0+beallio.1")
+        self._append_member(
+            archive,
+            "SDH-PlayTime/py_modules/tests/fixtures/fixture.json",
+            b"{}\n",
+        )
+        with self.assertRaisesRegex(
+            release_archive.ArchiveValidationError, "excluded development payload"
+        ):
+            release_archive.validate_archive(archive, "3.3.0+beallio.1")
+
     def test_validation_requires_runtime_entries(self) -> None:
         archive = self._build("3.3.0+beallio.1")
         for missing_name in (
+            "SDH-PlayTime/DEVELOPER.md",
             "SDH-PlayTime/dist/index.js",
             "SDH-PlayTime/py_modules/__init__.py",
             "SDH-PlayTime/py_modules/game_resolution/__init__.py",

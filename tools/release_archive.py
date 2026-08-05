@@ -59,6 +59,7 @@ REQUIRED_FILES = (
     "package.json",
     "plugin.json",
     "README.md",
+    "DEVELOPER.md",
     VENDORED_REQUIREMENTS_FILE,
 )
 REQUIRED_DIRECTORIES = ("dist", "py_modules")
@@ -77,7 +78,7 @@ REQUIRED_RUNTIME_FILES = (
     "py_modules/game_resolution/models.py",
     "py_modules/game_resolution/steam_shortcuts.py",
 )
-_EXCLUDED_DIRECTORY_NAMES = {"__pycache__", ".pytest_cache"}
+_EXCLUDED_DIRECTORY_NAMES = {"__pycache__", ".pytest_cache", "tests"}
 _EXCLUDED_FILE_SUFFIXES = {".pyc", ".pyo"}
 
 
@@ -180,6 +181,7 @@ def _validate_vendored_pyyaml_paths(
             "vendored PyYAML must contain exactly one matching dist-info directory"
         )
 
+
 def _validate_vendored_pyyaml_hashes(payload: dict[PurePosixPath, bytes]) -> None:
     for relative_path, expected_digest in VENDORED_PYYAML_FILE_HASHES.items():
         path = PurePosixPath("py_modules", relative_path)
@@ -193,7 +195,9 @@ def _validate_vendored_pyyaml_hashes(payload: dict[PurePosixPath, bytes]) -> Non
 def _validate_vendored_pyyaml_source(source: Path) -> None:
     pin_path = source / VENDORED_REQUIREMENTS_FILE
     if not pin_path.is_file() or pin_path.is_symlink():
-        raise ArchiveValidationError(f"vendored dependency pin is missing or unsafe: {pin_path}")
+        raise ArchiveValidationError(
+            f"vendored dependency pin is missing or unsafe: {pin_path}"
+        )
     try:
         version = _parse_vendored_pyyaml_pin(pin_path.read_text(encoding="utf-8"))
         py_modules = source / "py_modules"
@@ -204,7 +208,9 @@ def _validate_vendored_pyyaml_source(source: Path) -> None:
         ]
         _validate_vendored_pyyaml_paths(relative_paths, version)
         payload = {
-            PurePosixPath("py_modules", relative_path): (py_modules / relative_path).read_bytes()
+            PurePosixPath("py_modules", relative_path): (
+                py_modules / relative_path
+            ).read_bytes()
             for relative_path in VENDORED_PYYAML_FILE_HASHES
         }
     except (OSError, UnicodeDecodeError) as error:
@@ -213,7 +219,9 @@ def _validate_vendored_pyyaml_source(source: Path) -> None:
         ) from error
     _validate_vendored_pyyaml_hashes(payload)
     _validate_vendored_pyyaml_metadata(
-        payload[PurePosixPath("py_modules", _pyyaml_dist_info_name(version), "METADATA")],
+        payload[
+            PurePosixPath("py_modules", _pyyaml_dist_info_name(version), "METADATA")
+        ],
         version,
     )
 
@@ -223,7 +231,9 @@ def _validate_vendored_pyyaml_archive(
 ) -> None:
     try:
         version = _parse_vendored_pyyaml_pin(
-            zip_file.read(f"{ARCHIVE_ROOT}/{VENDORED_REQUIREMENTS_FILE}").decode("utf-8")
+            zip_file.read(f"{ARCHIVE_ROOT}/{VENDORED_REQUIREMENTS_FILE}").decode(
+                "utf-8"
+            )
         )
         relative_paths = [
             PurePosixPath(*path.parts[1:]) for path in paths if len(path.parts) > 1
@@ -241,7 +251,9 @@ def _validate_vendored_pyyaml_archive(
         ) from error
     _validate_vendored_pyyaml_hashes(payload)
     _validate_vendored_pyyaml_metadata(
-        payload[PurePosixPath("py_modules", _pyyaml_dist_info_name(version), "METADATA")],
+        payload[
+            PurePosixPath("py_modules", _pyyaml_dist_info_name(version), "METADATA")
+        ],
         version,
     )
 
@@ -253,23 +265,31 @@ def _iter_release_files(source: Path) -> list[tuple[Path, Path]]:
     for filename in REQUIRED_FILES:
         path = source / filename
         if not path.is_file() or path.is_symlink():
-            raise ArchiveValidationError(f"required release file is missing or unsafe: {path}")
+            raise ArchiveValidationError(
+                f"required release file is missing or unsafe: {path}"
+            )
         selected.append((path, Path(filename)))
 
     for directory in REQUIRED_DIRECTORIES:
         root = source / directory
         if not root.is_dir() or root.is_symlink():
-            raise ArchiveValidationError(f"required release directory is missing or unsafe: {root}")
+            raise ArchiveValidationError(
+                f"required release directory is missing or unsafe: {root}"
+            )
         for path in sorted(root.rglob("*")):
             relative_path = path.relative_to(source)
             if _is_excluded(relative_path):
                 continue
             if path.is_symlink():
-                raise ArchiveValidationError(f"release payload may not contain symlinks: {path}")
+                raise ArchiveValidationError(
+                    f"release payload may not contain symlinks: {path}"
+                )
             if path.is_file():
                 selected.append((path, relative_path))
             elif not path.is_dir():
-                raise ArchiveValidationError(f"release payload contains an unsupported path: {path}")
+                raise ArchiveValidationError(
+                    f"release payload contains an unsupported path: {path}"
+                )
     return selected
 
 
@@ -277,9 +297,13 @@ def _manifest_bytes(path: Path, version: str) -> bytes:
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        raise ArchiveValidationError(f"could not read manifest {path}: {error}") from error
+        raise ArchiveValidationError(
+            f"could not read manifest {path}: {error}"
+        ) from error
     if manifest.get("name") != PLUGIN_NAME:
-        raise ArchiveValidationError(f"manifest identity must remain {PLUGIN_NAME}: {path}")
+        raise ArchiveValidationError(
+            f"manifest identity must remain {PLUGIN_NAME}: {path}"
+        )
     manifest["version"] = version
     return (json.dumps(manifest, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
@@ -296,11 +320,17 @@ def _read_checksum(checksum_path: Path, archive: Path) -> str:
         line = checksum_path.read_text(encoding="ascii").strip()
         digest, filename = line.split(maxsplit=1)
     except (OSError, UnicodeDecodeError, ValueError) as error:
-        raise ArchiveValidationError(f"invalid checksum file: {checksum_path}") from error
-    if len(digest) != 64 or any(character not in "0123456789abcdefABCDEF" for character in digest):
+        raise ArchiveValidationError(
+            f"invalid checksum file: {checksum_path}"
+        ) from error
+    if len(digest) != 64 or any(
+        character not in "0123456789abcdefABCDEF" for character in digest
+    ):
         raise ArchiveValidationError(f"invalid SHA-256 digest in {checksum_path}")
     if filename.lstrip("*") != archive.name:
-        raise ArchiveValidationError(f"checksum filename does not match archive: {checksum_path}")
+        raise ArchiveValidationError(
+            f"checksum filename does not match archive: {checksum_path}"
+        )
     return digest.lower()
 
 
@@ -315,7 +345,9 @@ def _validate_member_name(name: str) -> PurePosixPath:
     return PurePosixPath(canonical_name)
 
 
-def validate_archive(archive: Path, version: str, checksum_path: Path | None = None) -> None:
+def validate_archive(
+    archive: Path, version: str, checksum_path: Path | None = None
+) -> None:
     """Fail closed unless *archive* and its sidecar checksum meet the contract."""
     if not archive.is_file():
         raise ArchiveValidationError(f"archive does not exist: {archive}")
@@ -329,7 +361,9 @@ def validate_archive(archive: Path, version: str, checksum_path: Path | None = N
         with zipfile.ZipFile(archive) as zip_file:
             corrupted_member = zip_file.testzip()
             if corrupted_member:
-                raise ArchiveValidationError(f"ZIP CRC check failed for: {corrupted_member}")
+                raise ArchiveValidationError(
+                    f"ZIP CRC check failed for: {corrupted_member}"
+                )
             members = zip_file.infolist()
             names = [member.filename for member in members]
             if len(names) != len(set(names)):
@@ -337,16 +371,24 @@ def validate_archive(archive: Path, version: str, checksum_path: Path | None = N
             paths = [_validate_member_name(name) for name in names]
             roots = {path.parts[0] for path in paths}
             if roots != {ARCHIVE_ROOT}:
-                raise ArchiveValidationError(f"archive must have exactly one {ARCHIVE_ROOT}/ root")
+                raise ArchiveValidationError(
+                    f"archive must have exactly one {ARCHIVE_ROOT}/ root"
+                )
             if any(stat.S_ISLNK(member.external_attr >> 16) for member in members):
                 raise ArchiveValidationError("archive contains a symbolic link")
 
             required_paths = {f"{ARCHIVE_ROOT}/{name}" for name in REQUIRED_FILES}
-            required_paths.update(f"{ARCHIVE_ROOT}/{name}/" for name in REQUIRED_DIRECTORIES)
-            required_paths.update(f"{ARCHIVE_ROOT}/{name}" for name in REQUIRED_RUNTIME_FILES)
+            required_paths.update(
+                f"{ARCHIVE_ROOT}/{name}/" for name in REQUIRED_DIRECTORIES
+            )
+            required_paths.update(
+                f"{ARCHIVE_ROOT}/{name}" for name in REQUIRED_RUNTIME_FILES
+            )
             missing = required_paths.difference(names)
             if missing:
-                raise ArchiveValidationError(f"archive is missing required payload: {', '.join(sorted(missing))}")
+                raise ArchiveValidationError(
+                    f"archive is missing required payload: {', '.join(sorted(missing))}"
+                )
 
             allowed_roots = set(REQUIRED_FILES) | set(REQUIRED_DIRECTORIES)
             for member, path in zip(members, paths, strict=True):
@@ -355,18 +397,32 @@ def validate_archive(archive: Path, version: str, checksum_path: Path | None = N
                         raise ArchiveValidationError("archive root must be a directory")
                     continue
                 if path.parts[1] not in allowed_roots:
-                    raise ArchiveValidationError(f"archive contains non-release payload: {path}")
+                    raise ArchiveValidationError(
+                        f"archive contains non-release payload: {path}"
+                    )
+                relative_path = Path(*path.parts[1:])
+                if _is_excluded(relative_path):
+                    raise ArchiveValidationError(
+                        f"archive contains excluded development payload: {path}"
+                    )
 
             _validate_vendored_pyyaml_archive(zip_file, paths)
 
             package_manifest = json.loads(zip_file.read(f"{ARCHIVE_ROOT}/package.json"))
             plugin_manifest = json.loads(zip_file.read(f"{ARCHIVE_ROOT}/plugin.json"))
     except (OSError, zipfile.BadZipFile, json.JSONDecodeError) as error:
-        raise ArchiveValidationError(f"could not validate ZIP archive: {error}") from error
+        raise ArchiveValidationError(
+            f"could not validate ZIP archive: {error}"
+        ) from error
 
-    for manifest_name, manifest in (("package.json", package_manifest), ("plugin.json", plugin_manifest)):
+    for manifest_name, manifest in (
+        ("package.json", package_manifest),
+        ("plugin.json", plugin_manifest),
+    ):
         if manifest.get("name") != PLUGIN_NAME or manifest.get("version") != version:
-            raise ArchiveValidationError(f"{manifest_name} does not preserve {PLUGIN_NAME} at version {version}")
+            raise ArchiveValidationError(
+                f"{manifest_name} does not preserve {PLUGIN_NAME} at version {version}"
+            )
 
 
 def build_archive(source: Path, version: str, output: Path) -> Path:
@@ -379,17 +435,28 @@ def build_archive(source: Path, version: str, output: Path) -> Path:
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     selected = _iter_release_files(source)
-    manifests = {Path("package.json"): _manifest_bytes(source / "package.json", version), Path("plugin.json"): _manifest_bytes(source / "plugin.json", version)}
+    manifests = {
+        Path("package.json"): _manifest_bytes(source / "package.json", version),
+        Path("plugin.json"): _manifest_bytes(source / "plugin.json", version),
+    }
 
-    with tempfile.TemporaryDirectory(dir=output.parent, prefix=f".{output.name}.") as temporary_directory:
+    with tempfile.TemporaryDirectory(
+        dir=output.parent, prefix=f".{output.name}."
+    ) as temporary_directory:
         temporary_output = Path(temporary_directory) / output.name
-        with zipfile.ZipFile(temporary_output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zip_file:
+        with zipfile.ZipFile(
+            temporary_output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+        ) as zip_file:
             zip_file.writestr(f"{ARCHIVE_ROOT}/", b"")
             for directory in REQUIRED_DIRECTORIES:
-                zip_file.writestr(_archive_name(Path(directory), is_directory=True), b"")
+                zip_file.writestr(
+                    _archive_name(Path(directory), is_directory=True), b""
+                )
             for path, relative_path in selected:
                 if relative_path in manifests:
-                    zip_file.writestr(_archive_name(relative_path), manifests[relative_path])
+                    zip_file.writestr(
+                        _archive_name(relative_path), manifests[relative_path]
+                    )
                 else:
                     zip_file.write(path, _archive_name(relative_path))
         temporary_checksum = _write_checksum(temporary_output)
@@ -402,11 +469,19 @@ def build_archive(source: Path, version: str, output: Path) -> Path:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
-    build = subcommands.add_parser("build", help="build, checksum, and validate an archive")
-    build.add_argument("--source", type=Path, required=True, help="already-built checkout")
-    build.add_argument("--version", required=True, help="version to embed in both manifests")
+    build = subcommands.add_parser(
+        "build", help="build, checksum, and validate an archive"
+    )
+    build.add_argument(
+        "--source", type=Path, required=True, help="already-built checkout"
+    )
+    build.add_argument(
+        "--version", required=True, help="version to embed in both manifests"
+    )
     build.add_argument("--output", type=Path, required=True, help="output .zip path")
-    validate = subcommands.add_parser("validate", help="validate an archive and its checksum")
+    validate = subcommands.add_parser(
+        "validate", help="validate an archive and its checksum"
+    )
     validate.add_argument("--archive", type=Path, required=True)
     validate.add_argument("--version", required=True)
     validate.add_argument("--checksum", type=Path)
