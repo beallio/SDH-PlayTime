@@ -23,7 +23,7 @@
     "flatpak_legacy_path": {
       "flatpakAppId": "com.heroicgameslauncher.hgl",
       "shortcutExe": "/usr/bin/flatpak",
-      "shortcutLaunchOptions": "run com.heroicgameslauncher.hgl heroic://launch/legendary/legacy-game"
+      "shortcutLaunchOptions": "run com.heroicgameslauncher.hgl -- heroic://launch/legendary/legacy-game"
     },
     "sideload_query": {
       "shortcutExe": "/opt/Heroic/heroic",

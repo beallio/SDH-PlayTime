@@ -139,6 +139,7 @@ class ReleaseArchiveTests(unittest.TestCase):
                 "py_modules/game_resolution/coordinator.py",
                 "py_modules/game_resolution/direct.py",
                 "py_modules/game_resolution/filesystem.py",
+                "py_modules/game_resolution/heroic.py",
                 "py_modules/game_resolution/models.py",
                 "py_modules/pyyaml-6.0.3.dist-info/METADATA",
                 "py_modules/pyyaml-6.0.3.dist-info/licenses/LICENSE",
@@ -206,6 +207,7 @@ class ReleaseArchiveTests(unittest.TestCase):
             "SDH-PlayTime/py_modules/game_resolution/coordinator.py",
             "SDH-PlayTime/py_modules/game_resolution/direct.py",
             "SDH-PlayTime/py_modules/game_resolution/filesystem.py",
+            "SDH-PlayTime/py_modules/game_resolution/heroic.py",
             "SDH-PlayTime/py_modules/game_resolution/models.py",
         ):
             incomplete = self.workdir / f"without-{Path(missing_name).name}.zip"

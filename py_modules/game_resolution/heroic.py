@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -15,13 +15,23 @@ from .direct import (
     _has_direct_payload_evidence,
 )
 from .filesystem import FilesystemProbe, FilesystemProbeResult
-from .models import RequestValidationError, ResolutionRequest, ResolutionResult
+from .models import (
+    MAX_METADATA_CANDIDATES,
+    RequestValidationError,
+    ResolutionRequest,
+    ResolutionResult,
+)
 
 
 HEROIC_FLATPAK_APP_ID = "com.heroicgameslauncher.hgl"
 _SUPPORTED_RUNNERS = frozenset({"legendary", "gog", "nile", "sideload"})
 _UNSAFE_PATH_CHARACTERS = frozenset("$`?*[]{}|&;<>")
 _MAX_HEROIC_IDENTIFIER_LENGTH = 256
+_MAX_METADATA_BYTES = 256 * 1024
+_MAX_METADATA_JSON_DEPTH = 32
+_MAX_METADATA_JSON_NODES = 4096
+_MAX_METADATA_RECORDS = 128
+_MAX_METADATA_FIELD_LENGTH = 4096
 _METADATA_PATHS = {
     "legendary": Path("legendaryConfig") / "legendary" / "installed.json",
     "gog": Path("gog_store") / "installed.json",
@@ -31,7 +41,11 @@ _METADATA_PATHS = {
 
 
 def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
+    with path.open("rb") as metadata_file:
+        contents = metadata_file.read(_MAX_METADATA_BYTES + 1)
+    if len(contents) > _MAX_METADATA_BYTES:
+        raise ValueError("Heroic metadata exceeds the byte limit")
+    return contents.decode("utf-8")
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,9 +66,18 @@ class HeroicConfigRoots:
             flatpak=home / ".var" / "app" / HEROIC_FLATPAK_APP_ID / "config" / "heroic",
         )
 
-    def paths(self) -> tuple[Path, ...]:
+    def paths(
+        self, source: Literal["native", "flatpak"] | None = None
+    ) -> tuple[Path, ...]:
+        roots = (
+            (self.native, self.flatpak)
+            if source is None
+            else (self.native,)
+            if source == "native"
+            else (self.flatpak,)
+        )
         paths: list[Path] = []
-        for root in (self.native, self.flatpak):
+        for root in roots:
             if root is None or not root.is_absolute() or root in paths:
                 continue
             paths.append(root)
@@ -66,6 +89,7 @@ class _HeroicIdentity:
     app_id: str
     runner: str | None
     alternate_executable: Path | None
+    source: Literal["native", "flatpak"] = "native"
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,13 +212,18 @@ class HeroicAdapter:
         )
         if is_flatpak:
             launch_options = normalized.launch_option_tokens
+            if len(launch_options) == 4 and launch_options[2] == "--":
+                uri = launch_options[3]
+            elif len(launch_options) == 3:
+                uri = launch_options[2]
+            else:
+                raise RequestValidationError("malformed")
             if (
-                len(launch_options) != 3
-                or launch_options[0] != "run"
+                launch_options[0] != "run"
                 or launch_options[1].casefold() != HEROIC_FLATPAK_APP_ID
             ):
                 raise RequestValidationError("malformed")
-            return _parse_heroic_uri(launch_options[2])
+            return replace(_parse_heroic_uri(uri), source="flatpak")
 
         if normalized.flatpak_app_id is not None or not _is_heroic_executable(
             executable
@@ -207,15 +236,17 @@ class HeroicAdapter:
     def _lookup_metadata(self, identity: _HeroicIdentity) -> _MetadataLookup:
         candidates: list[_MetadataCandidate] = []
         runners = (identity.runner,) if identity.runner else tuple(_SUPPORTED_RUNNERS)
-        for root in self._config_roots.paths():
+        for root in self._config_roots.paths(identity.source):
             for runner in runners:
                 assert runner is not None
                 data, _ = self._read_metadata_file(root / _METADATA_PATHS[runner])
                 if data is None:
                     continue
-                candidates.extend(
-                    self._candidates_from_data(root, runner, identity, data)
-                )
+                records = self._candidates_from_data(root, runner, identity, data)
+                candidates.extend(records)
+                candidates = list(_deduplicate_candidates(candidates))
+                if len(candidates) > MAX_METADATA_CANDIDATES:
+                    raise RequestValidationError("malformed")
         return _MetadataLookup(tuple(candidates))
 
     def _read_metadata_file(self, path: Path) -> tuple[object | None, bool]:
@@ -227,10 +258,18 @@ class HeroicAdapter:
             raise RequestValidationError("permission_denied") from error
         except OSError as error:
             raise RequestValidationError("probe_failure") from error
-        try:
-            return json.loads(contents), True
-        except (TypeError, ValueError) as error:
+        except (TypeError, UnicodeError, ValueError) as error:
             raise RequestValidationError("malformed") from error
+        if not isinstance(contents, str):
+            raise RequestValidationError("malformed")
+        try:
+            if len(contents.encode("utf-8")) > _MAX_METADATA_BYTES:
+                raise ValueError("Heroic metadata exceeds the byte limit")
+            data = json.loads(contents)
+            _validate_metadata_shape(data)
+        except (TypeError, UnicodeError, ValueError, RecursionError) as error:
+            raise RequestValidationError("malformed") from error
+        return data, True
 
     def _candidates_from_data(
         self,
@@ -343,10 +382,21 @@ def _matching_records(
     if not isinstance(data, Mapping):
         raise RequestValidationError("malformed")
     if runner == "legendary":
+        if len(data) > _MAX_METADATA_RECORDS:
+            raise RequestValidationError("malformed")
         record = data.get(app_id)
-        if record is None:
-            return ()
-        return (_mapping_record(record, app_id),)
+        if record is not None:
+            return (_mapping_record(record, app_id, runner, mapping_key=app_id),)
+        for mapping_key, value in data.items():
+            if not isinstance(value, Mapping):
+                continue
+            candidate = cast(Mapping[str, object], value)
+            if app_id not in _record_identifiers(candidate):
+                continue
+            _validate_record_identity(candidate, app_id, runner)
+            if mapping_key != app_id:
+                raise RequestValidationError("ambiguous")
+        return ()
 
     collection_name = "games" if runner == "sideload" else "installed"
     collection = data.get(collection_name)
@@ -354,24 +404,102 @@ def _matching_records(
         return ()
     if not isinstance(collection, Sequence) or isinstance(collection, (str, bytes)):
         raise RequestValidationError("malformed")
+    if len(collection) > _MAX_METADATA_RECORDS:
+        raise RequestValidationError("malformed")
     records: list[Mapping[str, object]] = []
     for item in collection:
-        if not isinstance(item, Mapping):
-            raise RequestValidationError("malformed")
-        record_id = item.get("app_name", item.get("appName"))
-        if record_id != app_id:
+        record = _mapping_record(item, app_id, runner)
+        if app_id not in _record_identifiers(record):
             continue
-        records.append(cast(Mapping[str, object], item))
+        _validate_record_identity(record, app_id, runner)
+        records.append(record)
     return tuple(records)
 
 
-def _mapping_record(value: object, app_id: str) -> Mapping[str, object]:
+def _mapping_record(
+    value: object,
+    app_id: str,
+    runner: str,
+    *,
+    mapping_key: str | None = None,
+) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
         raise RequestValidationError("malformed")
-    declared_id = value.get("app_name", value.get("appName"))
-    if declared_id is not None and declared_id != app_id:
+    record = cast(Mapping[str, object], value)
+    if mapping_key is not None and mapping_key != app_id:
         raise RequestValidationError("ambiguous")
-    return cast(Mapping[str, object], value)
+    if mapping_key is not None:
+        _validate_record_identity(record, app_id, runner)
+    return record
+
+
+def _record_identifiers(record: Mapping[str, object]) -> tuple[str, ...]:
+    values: list[str] = []
+    for field_name in ("app_name", "appName", "app_id", "appId", "appID"):
+        if field_name not in record:
+            continue
+        value = record[field_name]
+        if not isinstance(value, str):
+            raise RequestValidationError("malformed")
+        values.append(value)
+    return tuple(values)
+
+
+def _validate_record_identity(
+    record: Mapping[str, object], app_id: str, runner: str
+) -> None:
+    identifiers = _record_identifiers(record)
+    if any(value != app_id for value in identifiers):
+        raise RequestValidationError("ambiguous")
+    for field_name in ("runner", "source"):
+        if field_name not in record:
+            continue
+        value = record[field_name]
+        if not isinstance(value, str):
+            raise RequestValidationError("malformed")
+        if value != runner:
+            raise RequestValidationError("ambiguous")
+
+
+def _deduplicate_candidates(
+    candidates: Sequence[_MetadataCandidate],
+) -> tuple[_MetadataCandidate, ...]:
+    unique: list[_MetadataCandidate] = []
+    seen: set[tuple[str, Path, Path | None, bool]] = set()
+    for candidate in candidates:
+        key = (
+            candidate.runner,
+            candidate.payload_path,
+            candidate.install_path,
+            candidate.sideload,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return tuple(unique)
+
+
+def _validate_metadata_shape(data: object) -> None:
+    pending: list[tuple[object, int]] = [(data, 0)]
+    nodes = 0
+    while pending:
+        value, depth = pending.pop()
+        nodes += 1
+        if nodes > _MAX_METADATA_JSON_NODES or depth > _MAX_METADATA_JSON_DEPTH:
+            raise ValueError("Heroic metadata exceeds structural limits")
+        if isinstance(value, Mapping):
+            for key, child in value.items():
+                if not isinstance(key, str) or len(key) > _MAX_METADATA_FIELD_LENGTH:
+                    raise ValueError("Heroic metadata has an invalid field name")
+                pending.append((child, depth + 1))
+        elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+            pending.extend((child, depth + 1) for child in value)
+        elif isinstance(value, str):
+            if len(value) > _MAX_METADATA_FIELD_LENGTH:
+                raise ValueError("Heroic metadata has an oversized field")
+        elif value is not None and not isinstance(value, (bool, int, float)):
+            raise ValueError("Heroic metadata has an unsupported value")
 
 
 def _installed_payload(record: Mapping[str, object]) -> tuple[Path, PurePosixPath]:

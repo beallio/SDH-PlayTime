@@ -72,6 +72,7 @@ REQUIRED_RUNTIME_FILES = (
     "py_modules/game_resolution/coordinator.py",
     "py_modules/game_resolution/direct.py",
     "py_modules/game_resolution/filesystem.py",
+    "py_modules/game_resolution/heroic.py",
     "py_modules/game_resolution/models.py",
 )
 _EXCLUDED_DIRECTORY_NAMES = {"__pycache__", ".pytest_cache"}
