@@ -69,11 +69,13 @@ REQUIRED_RUNTIME_FILES = (
     "py_modules/yaml/__init__.py",
     "py_modules/yaml/composer.py",
     "py_modules/game_resolution/__init__.py",
+    "py_modules/game_resolution/checksum.py",
     "py_modules/game_resolution/coordinator.py",
     "py_modules/game_resolution/direct.py",
     "py_modules/game_resolution/filesystem.py",
     "py_modules/game_resolution/heroic.py",
     "py_modules/game_resolution/models.py",
+    "py_modules/game_resolution/steam_shortcuts.py",
 )
 _EXCLUDED_DIRECTORY_NAMES = {"__pycache__", ".pytest_cache"}
 _EXCLUDED_FILE_SUFFIXES = {".pyc", ".pyo"}

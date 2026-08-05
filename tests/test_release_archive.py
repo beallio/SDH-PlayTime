@@ -205,10 +205,12 @@ class ReleaseArchiveTests(unittest.TestCase):
             "SDH-PlayTime/py_modules/__init__.py",
             "SDH-PlayTime/py_modules/game_resolution/__init__.py",
             "SDH-PlayTime/py_modules/game_resolution/coordinator.py",
+            "SDH-PlayTime/py_modules/game_resolution/checksum.py",
             "SDH-PlayTime/py_modules/game_resolution/direct.py",
             "SDH-PlayTime/py_modules/game_resolution/filesystem.py",
             "SDH-PlayTime/py_modules/game_resolution/heroic.py",
             "SDH-PlayTime/py_modules/game_resolution/models.py",
+            "SDH-PlayTime/py_modules/game_resolution/steam_shortcuts.py",
         ):
             incomplete = self.workdir / f"without-{Path(missing_name).name}.zip"
             with (
