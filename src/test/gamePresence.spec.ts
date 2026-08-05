@@ -223,6 +223,68 @@ describe("buildGamePresenceSnapshot", () => {
 		);
 	});
 
+	test("carries recognized direct and Heroic launcher kinds into the presence snapshot", async () => {
+		const snapshot = await build({
+			candidates: [
+				{
+					game: { id: "20", name: "Direct shortcut" },
+					duration: 1,
+					source: "non_steam",
+				},
+				{
+					game: { id: "21", name: "Heroic shortcut" },
+					duration: 1,
+					source: "non_steam",
+				},
+			],
+			nonSteamInventory: {
+				status: "complete",
+				apps: [
+					{ id: "20", name: "Direct shortcut" },
+					{ id: "21", name: "Heroic shortcut" },
+				],
+			},
+			getAppDetails: async (appId) =>
+				appId === 20
+					? directDetails(appId)
+					: {
+							status: "success" as const,
+							details: {
+								strShortcutExe: "/opt/Heroic/heroic",
+								strShortcutLaunchOptions:
+									"heroic://launch?appName=space%20game&runner=legendary",
+							} as AppDetails,
+						},
+			resolvePayloads: async (requests) => ({
+				results: requests.map((request) =>
+					request.launcherKind === "direct"
+						? reachableResult()
+						: {
+								launcherKind: "heroic" as const,
+								classificationStatus: "recognized" as const,
+								metadataStatus: "resolved" as const,
+								payloadStatus: "reachable" as const,
+								payloadKind: "file" as const,
+								provenance: "heroic_metadata" as const,
+								reasonCode: null,
+								payloadPath: "/verified/heroic-game.exe",
+							},
+				),
+				error: null,
+			}),
+		});
+
+		expect(
+			snapshot.candidates.map((candidate) => [
+				candidate.id,
+				candidate.launcherKind,
+			]),
+		).toEqual([
+			["20", "direct"],
+			["21", "heroic"],
+		]);
+	});
+
 	test("preserves inventory while a shortcut drive disconnects and reconnects", async () => {
 		const input: Pick<
 			GamePresenceBuildInput,

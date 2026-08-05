@@ -7,6 +7,7 @@ import { useLocator } from "@src/locator";
 import logger from "@src/utils/logger";
 import {
 	buildAssociationListGroups,
+	shouldRefreshAfterAssociationMutation,
 	type AssociationListGroup,
 } from "../associationViewModel";
 
@@ -49,7 +50,8 @@ export const useAssociations = () => {
 		async (childGameId: string) => {
 			const result =
 				await associationService.detachAssociationMember(childGameId);
-			if (result.success) await loadAssociations();
+			if (shouldRefreshAfterAssociationMutation(result))
+				await loadAssociations();
 			return result;
 		},
 		[associationService, loadAssociations],
@@ -59,7 +61,8 @@ export const useAssociations = () => {
 		async (anchorGameId: string) => {
 			const result =
 				await associationService.dissolveAssociationComponent(anchorGameId);
-			if (result.success) await loadAssociations();
+			if (shouldRefreshAfterAssociationMutation(result))
+				await loadAssociations();
 			return result;
 		},
 		[associationService, loadAssociations],

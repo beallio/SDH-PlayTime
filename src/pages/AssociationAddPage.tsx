@@ -36,12 +36,15 @@ export function AssociationAddPage() {
 	const {
 		anchorCards,
 		componentCards,
+		additionCards,
 		snapshot,
 		loading,
 		saving,
 		error,
 		selectedMemberIds,
+		additionMessages,
 		allMembersSelected,
+		hasEnoughMembers,
 		canConfirm,
 		rankingReasons,
 		confirmationSummary,
@@ -161,9 +164,11 @@ export function AssociationAddPage() {
 											padding: "4px 0",
 										}}
 									>
-										Select every member shown by the backend component, then
-										choose the proposed parent. A recommendation is convenient
-										only; it is never saved until you confirm it.
+										Select every member shown by the backend component, then add
+										any eligible singleton entries and choose the proposed
+										parent. Existing component members are always required. A
+										recommendation is convenient only; it is never saved until
+										you confirm it.
 									</div>
 								</Field>
 							</PanelSectionRow>
@@ -181,8 +186,44 @@ export function AssociationAddPage() {
 											key={card.id}
 											card={card}
 											memberSelected={selectedMemberIds.includes(card.id)}
-											onToggleMember={() => toggleMember(card.id)}
-											onSelectParent={() => selectParent(card.id)}
+											onSelectParent={() => void selectParent(card.id)}
+										/>
+									))}
+								</div>
+							</PanelSectionRow>
+
+							<PanelSectionRow>
+								<Field label="Eligible additions">
+									<div
+										style={{
+											fontSize: "11px",
+											color: "#8b929a",
+											padding: "4px 0",
+										}}
+									>
+										Include one or more entries to create or expand this group.
+										Each addition is checked against its own explicit component
+										before it can be selected.
+									</div>
+								</Field>
+							</PanelSectionRow>
+							<PanelSectionRow>
+								<div
+									style={{
+										display: "flex",
+										flexDirection: "column",
+										gap: "8px",
+										width: "100%",
+									}}
+								>
+									{additionCards.map((card) => (
+										<AssociationCandidateCard
+											key={card.id}
+											card={card}
+											memberSelected={selectedMemberIds.includes(card.id)}
+											onToggleMember={() => void toggleMember(card.id)}
+											onSelectParent={() => void selectParent(card.id)}
+											membershipMessage={additionMessages[card.id]}
 										/>
 									))}
 								</div>
@@ -208,6 +249,14 @@ export function AssociationAddPage() {
 								<PanelSectionRow>
 									<div style={{ color: "#f1c46a", fontSize: "12px" }}>
 										Every backend member must be included before confirmation.
+									</div>
+								</PanelSectionRow>
+							)}
+
+							{!hasEnoughMembers && (
+								<PanelSectionRow>
+									<div style={{ color: "#f1c46a", fontSize: "12px" }}>
+										Include at least one eligible addition to create a group.
 									</div>
 								</PanelSectionRow>
 							)}

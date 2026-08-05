@@ -11,11 +11,24 @@ import { useAssociations } from "./association/hooks/useAssociations";
 import { AddAssociationButton } from "./association/components/AddAssociationButton";
 import { EmptyState } from "./association/components/EmptyState";
 import { AssociationListItem } from "./association/components/AssociationListItem";
+import {
+	getAssociationListChangeParentAction,
+	getAssociationListDisplayState,
+} from "./association/associationViewModel";
 import { navigateToAssociationSelection } from "./navigation";
 
 export function AssociationListPage() {
 	const { groups, loading, error, refresh, detachMember, dissolveGroup } =
 		useAssociations();
+	const openGroupParentSelector = (anchorGameId: string) => {
+		const action = getAssociationListChangeParentAction(anchorGameId);
+		if (action.action === "open-group-selector")
+			navigateToAssociationSelection(action.anchorGameId);
+	};
+	const displayState = getAssociationListDisplayState({
+		groupCount: groups.length,
+		hasError: !!error,
+	});
 
 	const showResultError = (message: string) => {
 		showModal(
@@ -106,12 +119,12 @@ export function AssociationListPage() {
 						</PanelSectionRow>
 					)}
 
-					{groups.length === 0 ? (
+					{displayState === "empty" ? (
 						<EmptyState
 							title="No game associations configured"
 							description="Choose a game group to confirm how its playtime is combined"
 						/>
-					) : (
+					) : displayState === "groups" ? (
 						<div
 							style={{
 								display: "flex",
@@ -125,7 +138,7 @@ export function AssociationListPage() {
 									key={group.anchorGameId}
 									group={group}
 									onChangeParent={() =>
-										navigateToAssociationSelection(group.anchorGameId)
+										openGroupParentSelector(group.anchorGameId)
 									}
 									onDetachChild={handleDetach}
 									onDissolve={() =>
@@ -134,7 +147,7 @@ export function AssociationListPage() {
 								/>
 							))}
 						</div>
-					)}
+					) : null}
 				</PanelSection>
 			</Focusable>
 		</PageWrapper>

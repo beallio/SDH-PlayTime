@@ -7,6 +7,7 @@ import type { GamePresenceCandidate } from "@src/app/gamePresence";
 import type {
 	AssociationComponentMember,
 	AssociationComponentSnapshot,
+	AssociationResult,
 	ConfirmAssociationComponentDTO,
 	GameAssociation,
 } from "@src/types/association";
@@ -55,7 +56,14 @@ function sourceLabel(candidate: GamePresenceCandidate) {
 		case "native_steam":
 			return "Steam library";
 		case "non_steam":
-			return "Non-Steam shortcut";
+			switch (candidate.launcherKind) {
+				case "direct":
+					return "Direct shortcut";
+				case "heroic":
+					return "Heroic shortcut";
+				default:
+					return "Unknown non-Steam shortcut";
+			}
 		case "unknown":
 			return "Unknown source";
 	}
@@ -81,11 +89,21 @@ function availabilityLabel(candidate: GamePresenceCandidate) {
 		case "unknown":
 			return "Status unavailable";
 		case "unreachable":
-			return candidate.availability.reasons.some(
-				(reason) => reason.code === "native_not_installed",
+			if (
+				candidate.availability.reasons.some(
+					(reason) => reason.code === "drive_disconnected",
+				)
 			)
-				? "Installation missing"
-				: "Drive disconnected";
+				return "Drive disconnected";
+			if (
+				candidate.availability.reasons.some(
+					(reason) =>
+						reason.code === "native_not_installed" ||
+						reason.code === "payload_missing",
+				)
+			)
+				return "Installation missing";
+			return "Status unavailable";
 	}
 }
 
@@ -122,6 +140,46 @@ export function getAssociationComponentCandidates(
 	return snapshot.existingMembers.map(
 		(member) => candidatesById.get(member.gameId) ?? fallbackCandidate(member),
 	);
+}
+
+export type AssociationAdditionDecision =
+	| { action: "add" }
+	| { action: "reject"; message: string }
+	| { action: "refresh"; message: string };
+
+/**
+ * Checks a prospective addition against its own backend component before a confirm
+ * request can reach the backend's UNEXPECTED_MEMBER guard.
+ */
+export function getAssociationAdditionDecision({
+	loadedSnapshot,
+	candidateSnapshot,
+}: {
+	loadedSnapshot: AssociationComponentSnapshot;
+	candidateSnapshot: AssociationComponentSnapshot;
+}): AssociationAdditionDecision {
+	const loadedMemberIds = new Set(
+		loadedSnapshot.existingMembers.map((member) => member.gameId),
+	);
+	if (
+		candidateSnapshot.existingMembers.some((member) =>
+			loadedMemberIds.has(member.gameId),
+		)
+	) {
+		return {
+			action: "refresh",
+			message:
+				"This game group changed while candidates were being checked. Refresh status before choosing an addition.",
+		};
+	}
+	if (candidateSnapshot.existingMembers.length > 1) {
+		return {
+			action: "reject",
+			message:
+				"This entry already belongs to another logical game group and cannot be added here.",
+		};
+	}
+	return { action: "add" };
 }
 
 export function associationRankingReasonLabels(
@@ -198,6 +256,35 @@ function memberById(
 	return member;
 }
 
+function selectedAssociationMembers({
+	snapshot,
+	candidates,
+	selectedMemberIds,
+}: {
+	snapshot: AssociationComponentSnapshot;
+	candidates: ReadonlyArray<GamePresenceCandidate>;
+	selectedMemberIds: ReadonlyArray<string>;
+}) {
+	const existingById = new Map(
+		snapshot.existingMembers.map((member) => [member.gameId, member]),
+	);
+	const candidatesById = new Map(
+		candidates.map((candidate) => [candidate.id, candidate]),
+	);
+	const selectedIds = new Set(selectedMemberIds);
+	const selectedExisting = snapshot.existingMembers.filter((member) =>
+		selectedIds.has(member.gameId),
+	);
+	const addedMembers = selectedMemberIds.flatMap((gameId) => {
+		if (existingById.has(gameId) || !selectedIds.delete(gameId)) return [];
+		const candidate = candidatesById.get(gameId);
+		if (!candidate)
+			throw new Error("The selected association member is no longer present.");
+		return [{ gameId: candidate.id, gameName: candidate.name }];
+	});
+	return [...selectedExisting, ...addedMembers];
+}
+
 export function buildAssociationConfirmationSummary({
 	snapshot,
 	candidates,
@@ -211,10 +298,11 @@ export function buildAssociationConfirmationSummary({
 	proposedParentId: string;
 	reasons: string[];
 }): AssociationConfirmationSummary {
-	const selectedIds = new Set(selectedMemberIds);
-	const selectedMembers = snapshot.existingMembers.filter((member) =>
-		selectedIds.has(member.gameId),
-	);
+	const selectedMembers = selectedAssociationMembers({
+		snapshot,
+		candidates,
+		selectedMemberIds,
+	});
 	const proposedParent = memberById(selectedMembers, proposedParentId);
 	const candidatesById = new Map(
 		candidates.map((candidate) => [candidate.id, candidate]),
@@ -262,6 +350,25 @@ export function shouldRefreshAssociationComponent(
 	errorCode: string | undefined,
 ) {
 	return errorCode === "STALE_COMPONENT" || errorCode === "COMPONENT_CONFLICT";
+}
+
+/** A failed list RPC is not an empty list; preserve any already-loaded groups. */
+export function getAssociationListDisplayState({
+	groupCount,
+	hasError,
+}: {
+	groupCount: number;
+	hasError: boolean;
+}) {
+	if (groupCount > 0) return "groups" as const;
+	return hasError ? ("error" as const) : ("empty" as const);
+}
+
+/** Detach and dissolve are the only removal results that should reload list state. */
+export function shouldRefreshAfterAssociationMutation(
+	result: AssociationResult,
+) {
+	return result.success;
 }
 
 /** Groups only explicit parent-child edges; it never infers a group from inventory. */
@@ -333,5 +440,16 @@ export function getAssociationActionDecision(action: AssociationAction) {
 
 /** Context menus deliberately route into the same confirmation-capable selector. */
 export function getAssociationContextMenuAction(_anchorGameId: string) {
-	return getAssociationActionDecision("change-parent");
+	return {
+		...getAssociationActionDecision("change-parent"),
+		anchorGameId: _anchorGameId,
+	};
+}
+
+/** Association cards use the same anchored selector request as a game context menu. */
+export function getAssociationListChangeParentAction(anchorGameId: string) {
+	return {
+		...getAssociationActionDecision("change-parent"),
+		anchorGameId,
+	};
 }

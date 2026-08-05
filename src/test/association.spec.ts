@@ -5,6 +5,7 @@ import type {
 	AssociationComponentConfirmationResult,
 	AssociationComponentReadResult,
 	ConfirmAssociationComponentDTO,
+	GameAssociation,
 } from "@src/types/association";
 
 const calls: unknown[][] = [];
@@ -72,10 +73,12 @@ describe("AssociationService component confirmation", () => {
 				: confirmationResponse;
 		const service = new AssociationService();
 
-		expect(await service.getAssociationComponent("gamma")).toEqual(readResponse);
-		expect(await service.confirmAssociationComponent(confirmationRequest)).toEqual(
-			confirmationResponse,
+		expect(await service.getAssociationComponent("gamma")).toEqual(
+			readResponse,
 		);
+		expect(
+			await service.confirmAssociationComponent(confirmationRequest),
+		).toEqual(confirmationResponse);
 		expect(calls).toEqual([
 			[BACK_END_API.GET_GAME_ASSOCIATION_COMPONENT, "gamma"],
 			[BACK_END_API.CONFIRM_GAME_ASSOCIATION_COMPONENT, confirmationRequest],
@@ -99,6 +102,29 @@ describe("AssociationService component confirmation", () => {
 		expect(calls).toEqual([[BACK_END_API.GET_ASSOCIATION_CANDIDATES]]);
 	});
 
+	test("preserves association-list RPC failures instead of converting them into an empty list", async () => {
+		const associations: GameAssociation[] = [
+			{
+				parentGameId: "parent",
+				parentGameName: "Parent",
+				childGameId: "child",
+				childGameName: "Child",
+			},
+		];
+		callHandler = async () => associations;
+		const service = new AssociationService();
+
+		expect(await service.getAllAssociations()).toEqual(associations);
+		expect(calls).toEqual([[BACK_END_API.GET_ALL_GAME_ASSOCIATIONS]]);
+
+		callHandler = async () => {
+			throw new Error("association backend unavailable");
+		};
+		await expect(service.getAllAssociations()).rejects.toThrow(
+			"association backend unavailable",
+		);
+	});
+
 	test("preserves structured conflicts and supplies a network fallback", async () => {
 		const conflict: AssociationComponentConfirmationResult = {
 			success: false,
@@ -110,12 +136,16 @@ describe("AssociationService component confirmation", () => {
 		callHandler = async () => conflict;
 		const service = new AssociationService();
 
-		expect(await service.confirmAssociationComponent(confirmationRequest)).toEqual(conflict);
+		expect(
+			await service.confirmAssociationComponent(confirmationRequest),
+		).toEqual(conflict);
 
 		callHandler = async () => {
 			throw new Error("network unavailable");
 		};
-		expect(await service.confirmAssociationComponent(confirmationRequest)).toEqual({
+		expect(
+			await service.confirmAssociationComponent(confirmationRequest),
+		).toEqual({
 			success: false,
 			error: {
 				code: "NETWORK_ERROR",
@@ -133,7 +163,9 @@ describe("AssociationService component confirmation", () => {
 				: dissolveSuccess;
 		const service = new AssociationService();
 
-		expect(await service.detachAssociationMember("gamma")).toEqual(detachSuccess);
+		expect(await service.detachAssociationMember("gamma")).toEqual(
+			detachSuccess,
+		);
 		expect(await service.dissolveAssociationComponent("alpha")).toEqual(
 			dissolveSuccess,
 		);

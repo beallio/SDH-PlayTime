@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import type { TrackingService } from "@src/app/tracking";
 import { TRACKING_STATUS_OPTIONS } from "@src/pages/tracking/constants";
 import { navigateToAssociationSelection } from "@src/pages/navigation";
+import { getAssociationContextMenuAction } from "@src/pages/association/associationViewModel";
 import type { TrackingStatus } from "@src/types/tracking";
 import { getStatusLabel } from "@src/pages/tracking/utils";
 
@@ -260,9 +261,14 @@ function GameTrackingMenu({
 }
 
 function GameAssociationMenu({ gameId }: { gameId: string }) {
+	const selectorAction = getAssociationContextMenuAction(gameId);
 	return (
 		<MenuGroup label="Game Association">
-			<MenuItem onClick={() => navigateToAssociationSelection(gameId)}>
+			<MenuItem
+				onClick={() =>
+					navigateToAssociationSelection(selectorAction.anchorGameId)
+				}
+			>
 				Review game group and parent...
 			</MenuItem>
 		</MenuGroup>

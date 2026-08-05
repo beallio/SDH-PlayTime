@@ -7,6 +7,7 @@ type AssociationCandidateCardProps = {
 	onToggleMember?: () => void;
 	onSelectParent?: () => void;
 	primaryActionLabel?: string;
+	membershipMessage?: string;
 };
 
 function StatusPill({ children }: { children: string }) {
@@ -36,6 +37,7 @@ export function AssociationCandidateCard({
 	onToggleMember,
 	onSelectParent,
 	primaryActionLabel,
+	membershipMessage,
 }: AssociationCandidateCardProps) {
 	return (
 		<Focusable
@@ -89,6 +91,21 @@ export function AssociationCandidateCard({
 					}}
 				>
 					{card.manualParentWarning}
+				</div>
+			)}
+
+			{membershipMessage && (
+				<div
+					style={{
+						padding: "8px",
+						background: "rgba(232, 167, 51, 0.14)",
+						border: "1px solid rgba(232, 167, 51, 0.45)",
+						borderRadius: "4px",
+						color: "#f1c46a",
+						fontSize: "11px",
+					}}
+				>
+					{membershipMessage}
 				</div>
 			)}
 

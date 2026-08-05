@@ -51,7 +51,9 @@ export class AssociationService {
 	}
 
 	/** Detach a child without removing its recorded playtime. */
-	async detachAssociationMember(childGameId: string): Promise<AssociationResult> {
+	async detachAssociationMember(
+		childGameId: string,
+	): Promise<AssociationResult> {
 		return await call<[string], AssociationResult>(
 			BACK_END_API.DETACH_GAME_ASSOCIATION_MEMBER,
 			childGameId,
@@ -68,7 +70,9 @@ export class AssociationService {
 	}
 
 	/** Remove every explicit association edge from one component. */
-	async dissolveAssociationComponent(anchorGameId: string): Promise<AssociationResult> {
+	async dissolveAssociationComponent(
+		anchorGameId: string,
+	): Promise<AssociationResult> {
 		return await call<[string], AssociationResult>(
 			BACK_END_API.DISSOLVE_GAME_ASSOCIATION_COMPONENT,
 			anchorGameId,
@@ -78,7 +82,8 @@ export class AssociationService {
 				success: false,
 				error: {
 					code: "NETWORK_ERROR",
-					message: "Failed to dissolve association component. Please try again.",
+					message:
+						"Failed to dissolve association component. Please try again.",
 				},
 			};
 		});
@@ -88,12 +93,14 @@ export class AssociationService {
 	 * Get all game associations
 	 */
 	async getAllAssociations(): Promise<GameAssociation[]> {
-		return await call<[], GameAssociation[]>(
-			BACK_END_API.GET_ALL_GAME_ASSOCIATIONS,
-		).catch((error) => {
+		try {
+			return await call<[], GameAssociation[]>(
+				BACK_END_API.GET_ALL_GAME_ASSOCIATIONS,
+			);
+		} catch (error) {
 			logger.error("Failed to get game associations:", error);
-			return [];
-		});
+			throw error;
+		}
 	}
 
 	/**
