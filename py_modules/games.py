@@ -152,7 +152,9 @@ class Games:
 
         if not parent_game or parent_game.name is None:
             raise ValueError(
-                f"Cannot link game '{child_game_id}' to parent '{parent_game_id}'. Parent game does not exist or has invalid name."
+                f"Cannot link game '{child_game_id}' to parent "
+                f"'{parent_game_id}'. Parent game does not exist or has "
+                "invalid name."
             )
 
         # Now link the checksum

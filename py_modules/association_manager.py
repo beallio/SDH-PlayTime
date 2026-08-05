@@ -66,19 +66,27 @@ class AssociationManager:
         if self.dao.is_game_a_child(child_game_id):
             return AssociationError(
                 code="ALREADY_CHILD",
-                message=f"Game '{child_game_id}' is already associated with another parent.",
+                message=(
+                    f"Game '{child_game_id}' is already associated with another parent."
+                ),
             )
 
         if self.dao.is_game_a_parent(child_game_id):
             return AssociationError(
                 code="IS_PARENT",
-                message=f"Game '{child_game_id}' has children and cannot become a child itself.",
+                message=(
+                    f"Game '{child_game_id}' has children and cannot "
+                    "become a child itself."
+                ),
             )
 
         if self.dao.is_game_a_child(parent_game_id):
             return AssociationError(
                 code="PARENT_IS_CHILD",
-                message=f"Game '{parent_game_id}' is a child of another game and cannot be a parent.",
+                message=(
+                    f"Game '{parent_game_id}' is a child of another game and "
+                    "cannot be a parent."
+                ),
             )
 
         self.dao.create_game_association(parent_game_id, child_game_id)

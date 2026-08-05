@@ -29,7 +29,8 @@ class Files:
 
         if sys.version_info < (3, 11):
             raise RuntimeError(
-                "Minimum required version of Python is 3.11.0 which supports: hashlib.file_digest"
+                "Minimum required version of Python is 3.11.0 which supports "
+                "hashlib.file_digest"
             )
 
         file_path = file_path.strip('"').strip("'")

@@ -197,9 +197,11 @@ class Plugin:
             dto = AddTimeDTO.from_dict(dto_dict)
 
             if not self.tracking_manager.should_track_session(dto.game_id):
+                status = self.tracking_manager.get_tracking_status(dto.game_id)
                 decky.logger.info(
-                    f"[add_time] Skipping tracking for game {dto.game_id} "
-                    f"(status: {self.tracking_manager.get_tracking_status(dto.game_id)})"
+                    "[add_time] Skipping tracking for game %s (status: %s)",
+                    dto.game_id,
+                    status,
                 )
                 return
 

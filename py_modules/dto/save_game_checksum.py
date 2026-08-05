@@ -25,7 +25,8 @@ class AddGameChecksumDTO:
         self.algorithm = self._required_string(
             "algorithm",
             kwargs.get("algorithm"),
-            "\"algorithm\" must be: 'SHA224', 'SHA256', 'SHA384', 'SHA512', 'SHA3_224', 'SHA3_256', 'SHA3_384', 'SHA3_512'",
+            '"algorithm" must be: "SHA224", "SHA256", "SHA384", '
+            '"SHA512", "SHA3_224", "SHA3_256", "SHA3_384", "SHA3_512"',
         )
         self.chunk_size = self._required_integer(
             "chunk_size",

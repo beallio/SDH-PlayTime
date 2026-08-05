@@ -495,7 +495,8 @@ class Statistics:
     ) -> Dict[str, SessionInformation]:
         """
         Gets the last session for each checksum from the grouped sessions.
-        Returns a dictionary mapping checksum to the most recent SessionInformation based on date.
+        Returns a dictionary mapping checksum to the most recent
+        SessionInformation based on date.
         """
         last_sessions_by_checksum: Dict[str, SessionInformation] = {}
 
@@ -574,7 +575,8 @@ class Statistics:
 
     def per_game_overall_statistic(self) -> List[Dict[str, Any]]:
         """
-        Returns overall statistics per game, grouped by checksum (or game_id if checksum is missing).
+        Returns overall statistics per game, grouped by checksum
+        (or game_id if checksum is missing).
         Filters out games based on tracking status (hidden/ignore are excluded).
         Applies game associations: child games are merged into parent games.
         """

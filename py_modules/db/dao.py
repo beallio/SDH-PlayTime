@@ -89,7 +89,10 @@ def _row_to_game_time_dto(cursor, row) -> GameTimeDto:
 
 
 def _row_to_playtime_information(cursor, row) -> PlaytimeInformation:
-    """Maps row to PlaytimeInformation: (game_id, total_time, last_played_date, game_name, aliases_id)"""
+    """Maps row to PlaytimeInformation.
+
+    (game_id, total_time, last_played_date, game_name, aliases_id)
+    """
     game_id, total_time, last_played_date, game_name, aliases_id = row
     return PlaytimeInformation(
         game_id, total_time, last_played_date, game_name, aliases_id
@@ -97,13 +100,19 @@ def _row_to_playtime_information(cursor, row) -> PlaytimeInformation:
 
 
 def _row_to_daily_game_time_dto(cursor, row) -> DailyGameTimeDto:
-    """Maps row to DailyGameTimeDto: (date, game_id, game_name, time, sessions, checksum)"""
+    """Maps row to DailyGameTimeDto.
+
+    (date, game_id, game_name, time, sessions, checksum)
+    """
     date, game_id, game_name, time, sessions, checksum = row
     return DailyGameTimeDto(date, game_id, game_name, time, sessions, checksum)
 
 
 def _row_to_game_session_tuple(cursor, row) -> Tuple[str, SessionInformation]:
-    """Maps row to (game_id, SessionInformation): (game_id, date, duration, migrated, checksum)"""
+    """Maps row to (game_id, SessionInformation).
+
+    (game_id, date, duration, migrated, checksum)
+    """
     game_id, date, duration, migrated, checksum = row
     return (game_id, SessionInformation(date, duration, migrated, checksum))
 
@@ -121,7 +130,11 @@ def _row_to_game_dictionary(cursor, row) -> GameDictionary:
 
 
 def _row_to_file_checksum(cursor, row) -> FileChecksum:
-    """Maps row to FileChecksum: (checksum_id, game_id, game_name, checksum, algorithm, chunk_size, created_at, updated_at)"""
+    """Maps row to FileChecksum.
+
+    (checksum_id, game_id, game_name, checksum, algorithm, chunk_size,
+    created_at, updated_at)
+    """
     (
         checksum_id,
         game_id,
@@ -145,7 +158,11 @@ def _row_to_file_checksum(cursor, row) -> FileChecksum:
 
 
 def _row_to_games_checksum(cursor, row) -> GamesChecksum:
-    """Maps row to GamesChecksum: (checksum_id, game_id, game_name, checksum, algorithm, chunk_size, created_at, updated_at)"""
+    """Maps row to GamesChecksum.
+
+    (checksum_id, game_id, game_name, checksum, algorithm, chunk_size,
+    created_at, updated_at)
+    """
     (
         checksum_id,
         game_id,
@@ -169,7 +186,10 @@ def _row_to_games_checksum(cursor, row) -> GamesChecksum:
 
 
 def _row_to_date_game_session_tuple(cursor, row) -> Tuple[str, str, SessionInformation]:
-    """Maps row to (session_date, game_id, SessionInformation): (session_date, game_id, date_time, duration, migrated, checksum)"""
+    """Maps row to (session_date, game_id, SessionInformation).
+
+    (session_date, game_id, date_time, duration, migrated, checksum)
+    """
     session_date, game_id, date_time, duration, migrated, checksum = row
     return (
         session_date,
@@ -248,7 +268,11 @@ class Dao:
             return (
                 connection.execute(
                     """
-                    SELECT EXISTS(SELECT 1 FROM play_time pt WHERE date_time < ? AND pt.game_id = ?)
+                    SELECT EXISTS(
+                        SELECT 1
+                        FROM play_time pt
+                        WHERE date_time < ? AND pt.game_id = ?
+                    )
                     """,
                     (
                         date.isoformat(),
@@ -261,8 +285,12 @@ class Dao:
         return (
             connection.execute(
                 """
-                SELECT EXISTS(SELECT 1 FROM play_time pt WHERE date_time < ?)
-                """,
+                    SELECT EXISTS(
+                        SELECT 1
+                        FROM play_time pt
+                        WHERE date_time < ?
+                    )
+                    """,
                 (date.isoformat(),),
             ).fetchone()[0]
             == 1
@@ -278,7 +306,11 @@ class Dao:
             return (
                 connection.execute(
                     """
-                    SELECT EXISTS(SELECT 1 FROM play_time pt WHERE date_time > ? AND pt.game_id = ?)
+                    SELECT EXISTS(
+                        SELECT 1
+                        FROM play_time pt
+                        WHERE date_time > ? AND pt.game_id = ?
+                    )
                     """,
                     (
                         date.isoformat(),
@@ -403,10 +435,12 @@ class Dao:
             ComponentLeaders (game_id, leader_id) AS (
                 -- Anchor: Every game starts as its own leader.
                 SELECT game_id, game_id FROM game_dict
-                UNION -- In recursion, UNION is appropriate as it implicitly handles duplicates across iterations.
+                UNION
+                -- In recursion, UNION is appropriate.
+                -- It implicitly handles duplicates across iterations.
                 -- Recursive part: Propagate the smallest leader_id across connections.
-                -- If game 'c.game_id' has a leader 'c.leader_id', and it's connected to another
-                -- game via an alias pair, propagate that leader.
+                -- If game has a leader, and it's connected to another game via an
+                -- alias pair, propagate that leader.
                 -- We check both directions of the edge.
                 SELECT
                     ap.id2,           -- The game receiving the new leader
@@ -421,7 +455,8 @@ class Dao:
                 JOIN AliasPairs ap ON cl.game_id = ap.id2
             ),
             -- Step 3: Find the definitive leader for each group.
-            -- After recursion, a game might have been assigned multiple potential leaders.
+            -- After recursion, a game might have been assigned multiple.
+            -- potential leaders.
             -- The true leader is the smallest one (the MIN).
             ComponentMapping AS (
                 SELECT
@@ -447,15 +482,24 @@ class Dao:
                 ) pt_agg ON gd.game_id = pt_agg.game_id
             )
             -- Final Step: Group the individual stats by the component leader ID.
-            SELECT
-                cm.component_leader_id as game_id,
-                SUM(igs.total_duration) AS total_time,
-                MAX(igs.last_played_date) AS last_played_date,
-                GROUP_CONCAT(DISTINCT igs.name) AS game_name,
-                -- A cleaner way to list aliases: aggregate all IDs that are not the leader.
-                NULLIF(GROUP_CONCAT(DISTINCT CASE WHEN igs.game_id <> cm.component_leader_id THEN igs.game_id END), '') AS aliases_id
-            FROM ComponentMapping cm
-            JOIN IndividualGameStats igs ON cm.game_id = igs.game_id
+                SELECT
+                    cm.component_leader_id as game_id,
+                    SUM(igs.total_duration) AS total_time,
+                    MAX(igs.last_played_date) AS last_played_date,
+                    GROUP_CONCAT(DISTINCT igs.name) AS game_name,
+                    -- A cleaner way to list aliases.
+                    -- Aggregate all IDs that are not the leader.
+                    NULLIF(
+                        GROUP_CONCAT(
+                            DISTINCT CASE
+                                WHEN igs.game_id <> cm.component_leader_id
+                                THEN igs.game_id
+                            END
+                        ),
+                        ''
+                    ) AS aliases_id
+                FROM ComponentMapping cm
+                JOIN IndividualGameStats igs ON cm.game_id = igs.game_id
             GROUP BY cm.component_leader_id
             ORDER BY last_played_date DESC, game_id DESC;
             """
@@ -520,11 +564,20 @@ class Dao:
                 WHERE gfc1.game_id < gfc2.game_id
             ),
             ComponentLeaders (game_id, leader_id) AS (
-                SELECT game_id, game_id FROM game_dict
+                SELECT game_id, game_id
+                FROM game_dict
                 UNION
-                SELECT ap.id2, cl.leader_id FROM ComponentLeaders cl JOIN AliasPairs ap ON cl.game_id = ap.id1
+                SELECT
+                    ap.id2,
+                    cl.leader_id
+                FROM ComponentLeaders cl
+                JOIN AliasPairs ap ON cl.game_id = ap.id1
                 UNION
-                SELECT ap.id1, cl.leader_id FROM ComponentLeaders cl JOIN AliasPairs ap ON cl.game_id = ap.id2
+                SELECT
+                    ap.id1,
+                    cl.leader_id
+                FROM ComponentLeaders cl
+                JOIN AliasPairs ap ON cl.game_id = ap.id2
             ),
             ComponentMapping AS (
                 SELECT
@@ -537,7 +590,13 @@ class Dao:
                 SELECT
                     game_id,
                     -- Sum duration ONLY for sessions within the specified period.
-                    SUM(CASE WHEN date_time >= :start AND date_time < :end THEN duration ELSE 0 END) AS period_duration,
+                    SUM(
+                        CASE
+                            WHEN date_time >= :start AND date_time < :end
+                            THEN duration
+                            ELSE 0
+                        END
+                    ) AS period_duration,
                     -- Get the absolute last played date for the game across all time.
                     MAX(date_time) AS last_played_date
                 FROM play_time
@@ -552,10 +611,18 @@ class Dao:
                     MAX(CASE WHEN gd.game_id = cm.component_leader_id THEN gd.name END),
                     MAX(gd.name)
                 ) AS game_name,
-                NULLIF(GROUP_CONCAT(DISTINCT CASE WHEN gd.game_id <> cm.component_leader_id THEN gd.game_id END), '') AS aliases_id
+                NULLIF(
+                    GROUP_CONCAT(
+                        DISTINCT CASE
+                            WHEN gd.game_id <> cm.component_leader_id
+                            THEN gd.game_id
+                        END
+                    ),
+                    '',
+            ) AS aliases_id
             FROM ComponentMapping cm
-            -- Join to get the calculated stats for each game. INNER JOIN naturally filters out
-            -- games that have never been played at all.
+            -- Join to get the calculated stats.
+            -- INNER JOIN naturally filters games never played.
             JOIN GameStats gs ON cm.game_id = gs.game_id
             -- Join to get the names of the games.
             JOIN game_dict gd ON cm.game_id = gd.game_id
@@ -622,7 +689,9 @@ class Dao:
                     play_time pt
                     LEFT JOIN game_dict gd ON pt.game_id = gd.game_id
                 WHERE
-                    NOT EXISTS (SELECT 1 FROM game_file_checksum WHERE game_id = :game_id)
+                    NOT EXISTS (
+                        SELECT 1 FROM game_file_checksum WHERE game_id = :game_id
+                    )
                     AND pt.game_id = :game_id
                     AND pt.date_time BETWEEN :begin AND :end
                     AND pt.migrated IS NULL
@@ -702,7 +771,9 @@ class Dao:
                 FROM (
                     SELECT
                         *,
-                        ROW_NUMBER() OVER (PARTITION BY game_id ORDER BY date_time DESC) AS rn
+                        ROW_NUMBER() OVER (
+                            PARTITION BY game_id ORDER BY date_time DESC
+                        ) AS rn
                     FROM play_time
                 ) pt
                 LEFT JOIN game_file_checksum gfc ON gfc.game_id = pt.game_id
@@ -829,19 +900,21 @@ class Dao:
         connection.row_factory = _row_to_game_session_tuple
 
         query = f"""
-            SELECT
-                pt.game_id,
-                pt.date_time,
-                pt.duration,
-                pt.migrated,
-                gfc.checksum
-            FROM (
                 SELECT
-                    *,
-                    ROW_NUMBER() OVER (PARTITION BY game_id ORDER BY date_time DESC) AS rn
-                FROM play_time
-                WHERE game_id IN ({placeholders})
-            ) pt
+                    pt.game_id,
+                    pt.date_time,
+                    pt.duration,
+                    pt.migrated,
+                    gfc.checksum
+                FROM (
+                    SELECT
+                        *,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY game_id ORDER BY date_time DESC
+                        ) AS rn
+                    FROM play_time
+                    WHERE game_id IN ({placeholders})
+                ) pt
             LEFT JOIN game_file_checksum gfc ON gfc.game_id = pt.game_id
             WHERE pt.rn = 1;
         """
@@ -955,8 +1028,17 @@ class Dao:
     ):
         connection.execute(
             """
-                INSERT INTO game_file_checksum(game_id, checksum, algorithm, chunk_size, created_at, updated_at)
-                VALUES (?, ?, ?, ?, IFNULL(?, CURRENT_TIMESTAMP), IFNULL(?, CURRENT_TIMESTAMP))
+                INSERT INTO game_file_checksum(
+                    game_id, checksum, algorithm, chunk_size, created_at, updated_at
+                )
+                VALUES (
+                    ?,
+                    ?,
+                    ?,
+                    ?,
+                    IFNULL(?, CURRENT_TIMESTAMP),
+                    IFNULL(?, CURRENT_TIMESTAMP)
+                )
                 """,
             (
                 game_id,
@@ -982,9 +1064,19 @@ class Dao:
     ):
         connection.executemany(
             """
-            INSERT OR IGNORE INTO game_file_checksum(game_id, checksum, algorithm, chunk_size, created_at, updated_at)
-            VALUES (?, ?, ?, ?, IFNULL(?, CURRENT_TIMESTAMP), IFNULL(?, CURRENT_TIMESTAMP))
-            """,
+                INSERT OR IGNORE INTO game_file_checksum(
+                    game_id,
+                    checksum,
+                    algorithm,
+                    chunk_size,
+                    created_at,
+                    updated_at,
+                )
+                VALUES (
+                    ?, ?, ?, ?, IFNULL(?, CURRENT_TIMESTAMP),
+                    IFNULL(?, CURRENT_TIMESTAMP)
+                )
+                """,
             checksums_data,
         )
 
