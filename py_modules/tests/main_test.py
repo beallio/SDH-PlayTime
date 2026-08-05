@@ -566,6 +566,58 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["success"], False)
         self.assertEqual(result["error"]["code"], "INVALID_REQUEST")
 
+    async def test_association_component_confirmation_rejects_over_limit_input(self):
+        plugin = self.main.Plugin()
+        await plugin._main()
+        await plugin.set_current_user("76561198088888887")
+        boundary_request = {
+            "anchor_game_id": "a" * 255,
+            "proposed_parent_game_id": "a" * 255,
+            "proposed_parent_game_name": "n" * 1024,
+            "expected_parent_game_id": None,
+            "expected_fingerprint": "fingerprint",
+            "selected_members": [
+                {
+                    "game_id": "a" * 255,
+                    "game_name": "n" * 1024,
+                },
+                *[
+                    {"game_id": f"game-{index}", "game_name": "Game"}
+                    for index in range(99)
+                ],
+            ],
+        }
+
+        boundary_result = await plugin.confirm_game_association_component(
+            boundary_request
+        )
+        too_many_members_result = await plugin.confirm_game_association_component(
+            {
+                **boundary_request,
+                "selected_members": [
+                    {"game_id": f"game-{index}", "game_name": "Game"}
+                    for index in range(101)
+                ],
+            }
+        )
+        too_long_name_result = await plugin.confirm_game_association_component(
+            {
+                **boundary_request,
+                "proposed_parent_game_name": "n" * 1025,
+            }
+        )
+        too_long_id_result = await plugin.confirm_game_association_component(
+            {
+                **boundary_request,
+                "anchor_game_id": "a" * 256,
+            }
+        )
+
+        self.assertEqual(boundary_result["error"]["code"], "ANCHOR_NOT_FOUND")
+        self.assertEqual(too_many_members_result["error"]["code"], "INVALID_REQUEST")
+        self.assertEqual(too_long_name_result["error"]["code"], "INVALID_REQUEST")
+        self.assertEqual(too_long_id_result["error"]["code"], "INVALID_REQUEST")
+
     async def test_association_component_confirmation_propagates_structured_errors(
         self,
     ):
@@ -610,6 +662,58 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
                 {
                     "success": False,
                     "error": {"code": code, "message": "structured"},
+                },
+            )
+
+    async def test_association_removal_rpcs_cover_success_malformed_and_errors(self):
+        from py_modules.schemas.response import AssociationComponentError
+
+        plugin = self.main.Plugin()
+        await plugin._main()
+        await plugin.set_current_user("76561198099999997")
+        dao = plugin.association_manager.dao
+        for game_id in ("alpha", "beta", "gamma"):
+            dao.save_game_dict(game_id, game_id.title())
+            dao.save_game_checksum(game_id, "shared", "SHA256", 1, None, None)
+        dao.create_game_association("alpha", "beta")
+        dao.create_game_association("alpha", "gamma")
+
+        self.assertEqual(
+            await plugin.detach_game_association_member("gamma"), {"success": True}
+        )
+        self.assertEqual(
+            await plugin.dissolve_game_association_component("alpha"), {"success": True}
+        )
+        self.assertEqual(dao.get_all_game_associations(), [])
+
+        for method in (
+            plugin.detach_game_association_member,
+            plugin.dissolve_game_association_component,
+        ):
+            malformed = await method(None)
+            self.assertEqual(malformed["error"]["code"], "INVALID_REQUEST")
+
+        for manager_method, rpc_method in (
+            ("detach_association_member", plugin.detach_game_association_member),
+            (
+                "dissolve_association_component",
+                plugin.dissolve_game_association_component,
+            ),
+        ):
+            with patch.object(
+                type(plugin.association_manager),
+                manager_method,
+                return_value=AssociationComponentError(
+                    code="NOT_ASSOCIATED", message="structured"
+                ),
+            ):
+                result = await rpc_method("alpha")
+
+            self.assertEqual(
+                result,
+                {
+                    "success": False,
+                    "error": {"code": "NOT_ASSOCIATED", "message": "structured"},
                 },
             )
 

@@ -463,6 +463,14 @@ class Dao:
         """Atomically confirm a complete logical-game component's explicit star."""
 
         try:
+            request.validate()
+        except ValueError as error:
+            raise AssociationComponentError(
+                code="INVALID_REQUEST",
+                message="The association component confirmation request is invalid.",
+            ) from error
+
+        try:
             with self._db.transactional() as connection:
                 snapshot = self._get_game_association_component(
                     connection, request.anchor_game_id
@@ -475,11 +483,6 @@ class Dao:
                 }
                 selected_member_ids = tuple(sorted(selected_by_game_id))
 
-                if len(selected_by_game_id) != len(request.selected_members):
-                    raise AssociationComponentError(
-                        code="INVALID_SELECTION",
-                        message="Selected members must not contain duplicate game IDs.",
-                    )
                 if request.expected_fingerprint != snapshot.fingerprint:
                     raise AssociationComponentError(
                         code="STALE_COMPONENT",
@@ -490,15 +493,7 @@ class Dao:
                         code="STALE_COMPONENT",
                         message="The association component parent changed before confirmation.",
                     )
-                unexpected_members = set(selected_member_ids) - set(
-                    component_member_ids
-                )
                 missing_members = set(component_member_ids) - set(selected_member_ids)
-                if unexpected_members:
-                    raise AssociationComponentError(
-                        code="UNEXPECTED_MEMBER",
-                        message="Selected members must belong to the anchored component.",
-                    )
                 if snapshot.status == "conflict" and missing_members:
                     raise AssociationComponentError(
                         code="COMPONENT_CONFLICT",
@@ -508,6 +503,18 @@ class Dao:
                     raise AssociationComponentError(
                         code="INCOMPLETE_MEMBER_SELECTION",
                         message="Confirmation must include every component member.",
+                    )
+
+                existing_member_ids = set(component_member_ids)
+                added_member_ids = set(selected_member_ids) - existing_member_ids
+                components = self._get_game_identity_components(connection)
+                if any(game_id in components for game_id in added_member_ids):
+                    raise AssociationComponentError(
+                        code="UNEXPECTED_MEMBER",
+                        message=(
+                            "Selected additions must not already belong to another "
+                            "identity component."
+                        ),
                     )
                 if request.proposed_parent_game_id not in selected_by_game_id:
                     raise AssociationComponentError(
@@ -523,32 +530,27 @@ class Dao:
                     )
 
                 selected_members = tuple(
-                    selected_by_game_id[game_id] for game_id in component_member_ids
+                    selected_by_game_id[game_id] for game_id in selected_member_ids
                 )
                 for member in selected_members:
                     self._save_game_dict(connection, member.game_id, member.game_name)
 
-                if not (
-                    snapshot.status == "confirmed"
-                    and snapshot.expected_parent_game_id
-                    == request.proposed_parent_game_id
-                ):
-                    placeholders = ", ".join("?" for _ in component_member_ids)
-                    connection.execute(
-                        f"""
-                        DELETE FROM game_association
-                        WHERE parent_game_id IN ({placeholders})
-                           OR child_game_id IN ({placeholders})
-                        """,
-                        component_member_ids + component_member_ids,
-                    )
-                    for child_game_id in component_member_ids:
-                        if child_game_id != request.proposed_parent_game_id:
-                            self._create_game_association(
-                                connection,
-                                request.proposed_parent_game_id,
-                                child_game_id,
-                            )
+                placeholders = ", ".join("?" for _ in component_member_ids)
+                connection.execute(
+                    f"""
+                    DELETE FROM game_association
+                    WHERE parent_game_id IN ({placeholders})
+                       OR child_game_id IN ({placeholders})
+                    """,
+                    component_member_ids + component_member_ids,
+                )
+                for child_game_id in selected_member_ids:
+                    if child_game_id != request.proposed_parent_game_id:
+                        self._create_game_association(
+                            connection,
+                            request.proposed_parent_game_id,
+                            child_game_id,
+                        )
 
                 return AssociationComponentConfirmation(
                     anchor_game_id=request.anchor_game_id,
@@ -570,7 +572,7 @@ class Dao:
                     status="confirmed",
                     aliases=tuple(
                         game_id
-                        for game_id in component_member_ids
+                        for game_id in selected_member_ids
                         if game_id != request.proposed_parent_game_id
                     ),
                 )

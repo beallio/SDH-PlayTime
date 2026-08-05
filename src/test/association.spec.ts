@@ -104,4 +104,69 @@ describe("AssociationService component confirmation", () => {
 			},
 		});
 	});
+
+	test("passes detach and dissolve successes through", async () => {
+		const detachSuccess = { success: true };
+		const dissolveSuccess = { success: true };
+		callHandler = async (method: unknown) =>
+			method === BACK_END_API.DETACH_GAME_ASSOCIATION_MEMBER
+				? detachSuccess
+				: dissolveSuccess;
+		const service = new AssociationService();
+
+		expect(await service.detachAssociationMember("gamma")).toEqual(detachSuccess);
+		expect(await service.dissolveAssociationComponent("alpha")).toEqual(
+			dissolveSuccess,
+		);
+		expect(calls).toEqual([
+			[BACK_END_API.DETACH_GAME_ASSOCIATION_MEMBER, "gamma"],
+			[BACK_END_API.DISSOLVE_GAME_ASSOCIATION_COMPONENT, "alpha"],
+		]);
+	});
+
+	test("preserves malformed and structured removal errors", async () => {
+		const detachInvalid = {
+			success: false as const,
+			error: { code: "INVALID_REQUEST", message: "Invalid child." },
+		};
+		const dissolveConflict = {
+			success: false as const,
+			error: {
+				code: "PARENT_REQUIRES_CONFIRMATION",
+				message: "Confirm a replacement parent first.",
+			},
+		};
+		callHandler = async (method: unknown) =>
+			method === BACK_END_API.DETACH_GAME_ASSOCIATION_MEMBER
+				? detachInvalid
+				: dissolveConflict;
+		const service = new AssociationService();
+
+		expect(await service.detachAssociationMember("")).toEqual(detachInvalid);
+		expect(await service.dissolveAssociationComponent("alpha")).toEqual(
+			dissolveConflict,
+		);
+	});
+
+	test("supplies network fallbacks for detach and dissolve", async () => {
+		callHandler = async () => {
+			throw new Error("network unavailable");
+		};
+		const service = new AssociationService();
+
+		expect(await service.detachAssociationMember("gamma")).toEqual({
+			success: false,
+			error: {
+				code: "NETWORK_ERROR",
+				message: "Failed to detach association member. Please try again.",
+			},
+		});
+		expect(await service.dissolveAssociationComponent("alpha")).toEqual({
+			success: false,
+			error: {
+				code: "NETWORK_ERROR",
+				message: "Failed to dissolve association component. Please try again.",
+			},
+		});
+	});
 });
