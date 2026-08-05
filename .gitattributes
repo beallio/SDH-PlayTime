@@ -1,0 +1,1 @@
+py_modules/yaml/*.py whitespace=-trailing-space,-blank-at-eof

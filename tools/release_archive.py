@@ -9,6 +9,7 @@ exact stable or nightly version without creating a dirty worktree.
 from __future__ import annotations
 
 import argparse
+from email.parser import BytesParser
 import hashlib
 import json
 import os
@@ -20,9 +21,31 @@ import zipfile
 
 ARCHIVE_ROOT = "SDH-PlayTime"
 PLUGIN_NAME = "PlayTime"
-REQUIRED_FILES = ("LICENSE", "main.py", "package.json", "plugin.json", "README.md")
+VENDORED_REQUIREMENTS_FILE = "requirements-vendored.txt"
+VENDORED_PYYAML_NAME = "PyYAML"
+VENDORED_PYYAML_DIST_INFO_PREFIX = "pyyaml-"
+VENDORED_PYYAML_REQUIRED_DIST_INFO_FILES = frozenset(
+    {"METADATA", "licenses/LICENSE"}
+)
+VENDORED_PYYAML_DEVELOPMENT_FILES = frozenset(
+    {"INSTALLER", "REQUESTED", "direct_url.json"}
+)
+VENDORED_PYYAML_COMPILED_SUFFIXES = frozenset({".dll", ".dylib", ".pyd", ".so"})
+REQUIRED_FILES = (
+    "LICENSE",
+    "main.py",
+    "package.json",
+    "plugin.json",
+    "README.md",
+    VENDORED_REQUIREMENTS_FILE,
+)
 REQUIRED_DIRECTORIES = ("dist", "py_modules")
-REQUIRED_RUNTIME_FILES = ("dist/index.js", "py_modules/__init__.py")
+REQUIRED_RUNTIME_FILES = (
+    "dist/index.js",
+    "py_modules/__init__.py",
+    "py_modules/safe_yaml.py",
+    "py_modules/yaml/__init__.py",
+)
 _EXCLUDED_DIRECTORY_NAMES = {"__pycache__", ".pytest_cache"}
 _EXCLUDED_FILE_SUFFIXES = {".pyc", ".pyo"}
 
@@ -46,8 +69,150 @@ def _is_excluded(path: Path) -> bool:
     )
 
 
+def _parse_vendored_pyyaml_pin(contents: str) -> str:
+    lines = contents.splitlines()
+    if len(lines) != 1:
+        raise ArchiveValidationError(
+            f"{VENDORED_REQUIREMENTS_FILE} must declare exactly one dependency pin"
+        )
+    name, separator, version = lines[0].partition("==")
+    if name != VENDORED_PYYAML_NAME or separator != "==" or not version:
+        raise ArchiveValidationError(
+            f"{VENDORED_REQUIREMENTS_FILE} must pin {VENDORED_PYYAML_NAME}"
+        )
+    return version
+
+
+def _pyyaml_dist_info_name(version: str) -> str:
+    return f"{VENDORED_PYYAML_DIST_INFO_PREFIX}{version}.dist-info"
+
+
+def _validate_vendored_pyyaml_metadata(metadata: bytes, version: str) -> None:
+    parsed = BytesParser().parsebytes(metadata)
+    if parsed.get_all("Name") != [VENDORED_PYYAML_NAME] or parsed.get_all(
+        "Version"
+    ) != [version]:
+        raise ArchiveValidationError(
+            "vendored PyYAML metadata must match the declared dependency pin"
+        )
+
+
+def _is_forbidden_vendored_pyyaml_path(path: PurePosixPath) -> bool:
+    return (
+        any(part in _EXCLUDED_DIRECTORY_NAMES | {"tests"} for part in path.parts)
+        or path.name.startswith("test_")
+        or path.name.endswith("_test.py")
+        or path.name in VENDORED_PYYAML_DEVELOPMENT_FILES
+        or path.suffix in _EXCLUDED_FILE_SUFFIXES | VENDORED_PYYAML_COMPILED_SUFFIXES
+    )
+
+
+def _validate_vendored_pyyaml_paths(
+    relative_paths: list[PurePosixPath], version: str
+) -> None:
+    """Validate the deliberately small pure-Python PyYAML payload."""
+    dist_info = _pyyaml_dist_info_name(version)
+    required_paths = {
+        PurePosixPath("py_modules", "safe_yaml.py"),
+        PurePosixPath("py_modules", "yaml", "__init__.py"),
+        PurePosixPath("py_modules", dist_info, "METADATA"),
+        PurePosixPath("py_modules", dist_info, "licenses", "LICENSE"),
+    }
+    available_paths = set(relative_paths)
+    missing_paths = required_paths.difference(available_paths)
+    if missing_paths:
+        raise ArchiveValidationError(
+            "vendored PyYAML payload is missing required files: "
+            + ", ".join(path.as_posix() for path in sorted(missing_paths))
+        )
+
+    dist_infos = {
+        path.parts[1]
+        for path in relative_paths
+        if len(path.parts) >= 2
+        and path.parts[0] == "py_modules"
+        and path.parts[1].lower().startswith(VENDORED_PYYAML_DIST_INFO_PREFIX)
+        and path.parts[1].endswith(".dist-info")
+    }
+    if dist_infos != {dist_info}:
+        raise ArchiveValidationError(
+            "vendored PyYAML must contain exactly one matching dist-info directory"
+        )
+
+    dist_info_files = {
+        PurePosixPath(*path.parts[2:]).as_posix()
+        for path in relative_paths
+        if len(path.parts) >= 3
+        and path.parts[:2] == ("py_modules", dist_info)
+    }
+    if dist_info_files != VENDORED_PYYAML_REQUIRED_DIST_INFO_FILES:
+        raise ArchiveValidationError(
+            "vendored PyYAML dist-info contains missing or development-only files"
+        )
+
+    for path in relative_paths:
+        if len(path.parts) < 2 or path.parts[0] != "py_modules":
+            continue
+        root = path.parts[1]
+        if root == "_yaml":
+            raise ArchiveValidationError(
+                "vendored PyYAML payload may not include the native _yaml extension"
+            )
+        if root in {"yaml", dist_info} and _is_forbidden_vendored_pyyaml_path(
+            PurePosixPath(*path.parts[2:])
+        ):
+            raise ArchiveValidationError(
+                "vendored PyYAML payload may not include compiled, cache, or development files"
+            )
+
+
+def _validate_vendored_pyyaml_source(source: Path) -> None:
+    pin_path = source / VENDORED_REQUIREMENTS_FILE
+    if not pin_path.is_file() or pin_path.is_symlink():
+        raise ArchiveValidationError(f"vendored dependency pin is missing or unsafe: {pin_path}")
+    try:
+        version = _parse_vendored_pyyaml_pin(pin_path.read_text(encoding="utf-8"))
+        py_modules = source / "py_modules"
+        relative_paths = [
+            path.relative_to(source)
+            for path in py_modules.rglob("*")
+            if path.is_file() and not path.is_symlink()
+        ]
+        _validate_vendored_pyyaml_paths(relative_paths, version)
+        metadata = (
+            py_modules / _pyyaml_dist_info_name(version) / "METADATA"
+        ).read_bytes()
+    except (OSError, UnicodeDecodeError) as error:
+        raise ArchiveValidationError(
+            f"could not read vendored PyYAML payload from {source}: {error}"
+        ) from error
+    _validate_vendored_pyyaml_metadata(metadata, version)
+
+
+def _validate_vendored_pyyaml_archive(
+    zip_file: zipfile.ZipFile, paths: list[PurePosixPath]
+) -> None:
+    try:
+        version = _parse_vendored_pyyaml_pin(
+            zip_file.read(f"{ARCHIVE_ROOT}/{VENDORED_REQUIREMENTS_FILE}").decode("utf-8")
+        )
+        relative_paths = [
+            PurePosixPath(*path.parts[1:]) for path in paths if len(path.parts) > 1
+        ]
+        _validate_vendored_pyyaml_paths(relative_paths, version)
+        metadata = zip_file.read(
+            f"{ARCHIVE_ROOT}/py_modules/{_pyyaml_dist_info_name(version)}/METADATA"
+        )
+    except (KeyError, UnicodeDecodeError) as error:
+        raise ArchiveValidationError(
+            f"could not read vendored PyYAML payload from archive: {error}"
+        ) from error
+    _validate_vendored_pyyaml_metadata(metadata, version)
+
+
 def _iter_release_files(source: Path) -> list[tuple[Path, Path]]:
     """Return the archive-relative files selected from an already-built tree."""
+    _validate_vendored_pyyaml_source(source)
     selected: list[tuple[Path, Path]] = []
     for filename in REQUIRED_FILES:
         path = source / filename
@@ -155,6 +320,8 @@ def validate_archive(archive: Path, version: str, checksum_path: Path | None = N
                     continue
                 if path.parts[1] not in allowed_roots:
                     raise ArchiveValidationError(f"archive contains non-release payload: {path}")
+
+            _validate_vendored_pyyaml_archive(zip_file, paths)
 
             package_manifest = json.loads(zip_file.read(f"{ARCHIVE_ROOT}/package.json"))
             plugin_manifest = json.loads(zip_file.read(f"{ARCHIVE_ROOT}/plugin.json"))

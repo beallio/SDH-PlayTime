@@ -53,7 +53,9 @@ jobs:
           uvx ruff@0.16.0 format --check .
 
       - name: Python type check
-        run: uvx ty@0.0.64 check main.py py_modules --exclude 'py_modules/tests/**'
+        run: |
+          uvx ty@0.0.64 check main.py py_modules --exclude 'py_modules/tests/**' \
+            --exclude 'py_modules/yaml/**'
 
       - name: Run backend tests
         run: uv run --no-project --with pytest pytest
