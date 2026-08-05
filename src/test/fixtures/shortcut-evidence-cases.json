@@ -1,0 +1,1421 @@
+{
+	"schemaVersion": 1,
+	"cases": [
+		{
+			"id": "direct-native-target",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "'/home/deck/Games/Space Game/space-game.x86_64'",
+				"strShortcutStartDir": "/home/deck/Games/Space Game"
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "direct",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-appimage-target-without-verified-identity-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "\"/home/deck/Applications/Some Game.AppImage\""
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "versioned-heroic-appimage-is-launcher-evidence-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/Heroic-2.16.1.AppImage"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "lutris-appimage-is-launcher-evidence-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/Lutris.AppImage"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "lutris",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "cemu-appimage-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/Cemu.AppImage"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "duckstation-appimage-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/DuckStation.AppImage"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "cartridges-appimage-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/Cartridges.AppImage"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "appimage-symlink-shape-is-not-sufficient-payload-evidence",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/Some-Game.AppImage"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-windows-target",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "\"/run/media/deck/SD Card/Games/Game.exe\""
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "direct",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "shared-wine-binary-is-not-a-payload",
+			"source": {
+				"repository": "bottlesdevs/Bottles",
+				"commit": "214e4afc33753cfc8bb6b447a19c8593c2a54322",
+				"path": "bottles/frontend/cli/cli.py"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/wine",
+				"strShortcutLaunchOptions": "\"/home/deck/Games/Game.exe\""
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-extensionless-target-is-not-checksum-eligible",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/bin/game"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "heroic-appimage-without-an-identity-is-not-a-payload",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/Heroic.AppImage"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "proton-runner-is-not-a-direct-payload",
+			"source": {
+				"repository": "ValveSoftware/Proton",
+				"commit": "f6a3605dbacba85f25953cdc4eb96a69d7102261",
+				"path": "proton"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.steam/steam/steamapps/common/Proton 9.0/proton"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "generic-flatpak-app-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strFlatpakAppID": "org.example.CustomLauncher",
+				"strShortcutExe": "/usr/bin/flatpak",
+				"strShortcutLaunchOptions": "run org.example.CustomLauncher -- /home/deck/Games/Game.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emulator-appimage-is-not-a-direct-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/RPCS3.AppImage"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "ryujinx-appimage-is-not-a-direct-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/Ryujinx.AppImage"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "bottles-appimage-is-not-a-direct-payload",
+			"source": {
+				"repository": "bottlesdevs/Bottles",
+				"commit": "214e4afc33753cfc8bb6b447a19c8593c2a54322",
+				"path": "bottles/frontend/cli/cli.py"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/Bottles.AppImage"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "custom-launcher-appimage-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/Custom-Game-Launcher.AppImage"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "custom-launcher-wrapper-chain-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/gamescope",
+				"strShortcutLaunchOptions": "-- /home/deck/Games/Game.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "extensionless-symlink-shape-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/CustomGame"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-literal-percent-encoded-filename-preserves-bytes",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Games/Literal%20Name%25/game.x86_64"
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "direct",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-variable-expression-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/$GAME/game.x86_64"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-command-substitution-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/$(whoami)/game.x86_64"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-steam-placeholder-after-a-valid-target-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "\"/home/deck/Games/Game.exe\" %command%"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-wildcard-target-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Games/*/Game.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-brace-expansion-target-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/{Games,Backups}/Game.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-process-substitution-target-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "\"/home/deck/<(resolver)/Game.exe\""
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-shell-operator-target-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "\"/home/deck/Games/Game.exe|/home/deck/Games/Fallback.exe\""
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-multiple-executable-tokens-are-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "\"/home/deck/Games/First.exe\" \"/home/deck/Games/Second.exe\""
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "versioned-ubisoft-connect-executable-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/UbisoftConnect-2.0.1.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "playnite-executable-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/Playnite.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "versioned-duckstation-executable-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/DuckStation-qt-x64-ReleaseLTCG.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "channel-suffixed-ubisoft-connect-executable-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/UbisoftConnect-beta.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "channel-suffixed-duckstation-executable-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/DuckStation-preview.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "suffix-bearing-symlink-shape-is-not-checksum-eligible-without-filesystem-evidence",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/Game.exe"
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "direct",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-at-extglob-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/@(Games)/Game.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-plus-extglob-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/+(Games)/Game.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-negated-extglob-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/!(Games)/Game.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "heroic-native-query-with-uri-encoded-alternate-executable",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/opt/Heroic/heroic",
+				"strShortcutLaunchOptions": "heroic://launch?appName=space%20game&runner=legendary&altExe=%2Fhome%2Fdeck%2FGames%2FSpace%20Game%2FGame.exe"
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {
+					"heroicAppName": "space game",
+					"heroicRunner": "legendary",
+					"heroicAltExe": "/home/deck/Games/Space Game/Game.exe"
+				}
+			}
+		},
+		{
+			"id": "heroic-dual-executable-command-is-ambiguous",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/opt/Heroic/heroic",
+				"strShortcutLaunchOptions": "heroic://launch?appName=space-game /home/deck/Games/Second.exe"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "heroic-shell-separator-and-extensionless-command-are-ambiguous",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/opt/Heroic/heroic",
+				"strShortcutLaunchOptions": "heroic://launch?appName=space-game && /usr/bin/other"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "heroic-foreign-option-does-not-authorize-an-extensionless-command",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/opt/Heroic/heroic",
+				"strShortcutLaunchOptions": "heroic://launch?appName=space-game --program /usr/bin/other"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "heroic-config-without-an-operand-is-ambiguous",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/opt/Heroic/heroic",
+				"strShortcutLaunchOptions": "heroic://launch?appName=space-game --config"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "heroic-flatpak-legacy-path-after-separator",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strFlatpakAppID": "com.heroicgameslauncher.hgl",
+				"strShortcutExe": "/usr/bin/flatpak",
+				"strShortcutLaunchOptions": "run com.heroicgameslauncher.hgl -- heroic://launch/legendary/legacy-game"
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {
+					"heroicAppName": "legacy-game",
+					"heroicRunner": "legendary"
+				}
+			}
+		},
+		{
+			"id": "heroic-duplicate-app-identifiers-are-ambiguous",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/opt/Heroic/heroic",
+				"strShortcutLaunchOptions": "heroic://launch?appName=first&appName=second"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "heroic-uri-decodes-percent-encoded-fields-exactly-once",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/opt/Heroic/heroic",
+				"strShortcutLaunchOptions": "heroic://launch?appName=literal%2520name&altExe=%252Fhome%252Fdeck%252FGames%252FLiteral%252520Name.exe"
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {
+					"heroicAppName": "literal%20name",
+					"heroicAltExe": "%2Fhome%2Fdeck%2FGames%2FLiteral%2520Name.exe"
+				}
+			}
+		},
+		{
+			"id": "heroic-uri-inside-an-unrelated-command-is-not-launcher-evidence",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Games/UnrelatedGame.x86_64",
+				"strShortcutLaunchOptions": "--metadata heroic://launch?appName=not-a-heroic-shortcut"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "mismatched-flatpak-app-and-uri-are-not-launcher-evidence",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strFlatpakAppID": "com.heroicgameslauncher.hgl",
+				"strShortcutExe": "/usr/bin/flatpak",
+				"strShortcutLaunchOptions": "run net.lutris.Lutris lutris:rungameid/42"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "competing-heroic-and-lutris-evidence-is-ambiguous",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/opt/Heroic/heroic",
+				"strShortcutLaunchOptions": "heroic://launch?appName=heroic-game lutris:rungame/unrelated-game"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "lutris-flatpak-numeric-id",
+			"source": {
+				"repository": "lutris/lutris",
+				"commit": "6538669bb384b5c7df5dbcb7aeed21c82b26b447",
+				"path": "lutris/gui/application.py"
+			},
+			"input": {
+				"strFlatpakAppID": "net.lutris.Lutris",
+				"strShortcutExe": "/usr/bin/flatpak",
+				"strShortcutLaunchOptions": "run net.lutris.Lutris lutris:rungameid/42"
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "lutris",
+				"externalIdentityHints": {
+					"lutrisGameId": "42"
+				}
+			}
+		},
+		{
+			"id": "lutris-standalone-wrapper-slug",
+			"source": {
+				"repository": "lutris/lutris",
+				"commit": "6538669bb384b5c7df5dbcb7aeed21c82b26b447",
+				"path": "lutris/util/xdgshortcuts.py"
+			},
+			"input": {
+				"strShortcutExe": "\"/home/deck/.local/share/lutris/runtime/lutris-wrapper.sh\"",
+				"strShortcutLaunchOptions": "'lutris:rungame/some-game'"
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "lutris",
+				"externalIdentityHints": {
+					"lutrisGameSlug": "some-game"
+				}
+			}
+		},
+		{
+			"id": "lutris-extensionless-secondary-command-is-ambiguous",
+			"source": {
+				"repository": "lutris/lutris",
+				"commit": "6538669bb384b5c7df5dbcb7aeed21c82b26b447",
+				"path": "lutris/gui/application.py"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/lutris",
+				"strShortcutLaunchOptions": "lutris:rungameid/42 /usr/bin/other"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "lutris",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "bottles-native-program-with-spaces",
+			"source": {
+				"repository": "bottlesdevs/Bottles",
+				"commit": "214e4afc33753cfc8bb6b447a19c8593c2a54322",
+				"path": "bottles/frontend/cli/cli.py"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/bottles-cli",
+				"strShortcutLaunchOptions": "run -p \"Game Program\" -b \"Archive Bottle\""
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "bottles",
+				"externalIdentityHints": {
+					"bottlesBottle": "Archive Bottle",
+					"bottlesProgram": "Game Program"
+				}
+			}
+		},
+		{
+			"id": "bottles-flatpak-executable-option",
+			"source": {
+				"repository": "bottlesdevs/Bottles",
+				"commit": "214e4afc33753cfc8bb6b447a19c8593c2a54322",
+				"path": "bottles/frontend/cli/cli.py"
+			},
+			"input": {
+				"strFlatpakAppID": "com.usebottles.bottles",
+				"strShortcutExe": "/usr/bin/flatpak",
+				"strShortcutLaunchOptions": "run com.usebottles.bottles bottles-cli run --bottle=Games --executable=\"C:\\\\Games\\\\Game.exe\""
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "bottles",
+				"externalIdentityHints": {
+					"bottlesBottle": "Games",
+					"bottlesExecutable": "C:\\Games\\Game.exe"
+				}
+			}
+		},
+		{
+			"id": "bottles-flatpak-separated-executable-option",
+			"source": {
+				"repository": "bottlesdevs/Bottles",
+				"commit": "214e4afc33753cfc8bb6b447a19c8593c2a54322",
+				"path": "bottles/frontend/cli/cli.py"
+			},
+			"input": {
+				"strFlatpakAppID": "com.usebottles.bottles",
+				"strShortcutExe": "/usr/bin/flatpak",
+				"strShortcutLaunchOptions": "run com.usebottles.bottles bottles-cli run --bottle Games --executable \"C:\\\\Games\\\\Game.exe\""
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "bottles",
+				"externalIdentityHints": {
+					"bottlesBottle": "Games",
+					"bottlesExecutable": "C:\\Games\\Game.exe"
+				}
+			}
+		},
+		{
+			"id": "bottles-extensionless-secondary-command-is-ambiguous",
+			"source": {
+				"repository": "bottlesdevs/Bottles",
+				"commit": "214e4afc33753cfc8bb6b447a19c8593c2a54322",
+				"path": "bottles/frontend/cli/cli.py"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/bottles-cli",
+				"strShortcutLaunchOptions": "run --bottle Games --program Game /usr/bin/other"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "bottles",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "bottles-duplicate-program-identifiers-are-ambiguous",
+			"source": {
+				"repository": "bottlesdevs/Bottles",
+				"commit": "214e4afc33753cfc8bb6b447a19c8593c2a54322",
+				"path": "bottles/frontend/cli/cli.py"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/bottles-cli",
+				"strShortcutLaunchOptions": "run -b Games -p First --program Second"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "bottles",
+				"externalIdentityHints": {
+					"bottlesBottle": "Games"
+				}
+			}
+		},
+		{
+			"id": "bottles-post-separator-identity-is-not-launcher-evidence",
+			"source": {
+				"repository": "bottlesdevs/Bottles",
+				"commit": "214e4afc33753cfc8bb6b447a19c8593c2a54322",
+				"path": "bottles/frontend/cli/cli.py"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/bottles-cli",
+				"strShortcutLaunchOptions": "run --bottle Games -- --program Game"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "bottles",
+				"externalIdentityHints": {
+					"bottlesBottle": "Games"
+				}
+			}
+		},
+		{
+			"id": "bottles-pre-separator-identity-wins-over-payload-arguments",
+			"source": {
+				"repository": "bottlesdevs/Bottles",
+				"commit": "214e4afc33753cfc8bb6b447a19c8593c2a54322",
+				"path": "bottles/frontend/cli/cli.py"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/bottles-cli",
+				"strShortcutLaunchOptions": "run --bottle Games --program Valid -- --program Payload"
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "bottles",
+				"externalIdentityHints": {
+					"bottlesBottle": "Games",
+					"bottlesProgram": "Valid"
+				}
+			}
+		},
+		{
+			"id": "emudeck-launcher-with-rom-outside-the-default-directory",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "\"/home/deck/Emulation/tools/launchers/mgba.sh\"",
+				"strShortcutLaunchOptions": "-f \"/home/deck/ROM Archive/Golden Sun.gba\""
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "emudeck-srm",
+				"payloadPath": "/home/deck/ROM Archive/Golden Sun.gba",
+				"externalIdentityHints": {
+					"romPath": "/home/deck/ROM Archive/Golden Sun.gba"
+				}
+			}
+		},
+		{
+			"id": "emudeck-config-bios-core-log-and-metadata-operands-are-not-roms",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "--config /home/deck/config/game.iso --bios /home/deck/bios/firmware.bin --core /home/deck/cores/mgba_libretro.so --log-file /home/deck/logs/game.log --metadata /home/deck/metadata/game.json"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-single-config-operand-is-not-a-rom",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "--config /home/deck/config/game.iso"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-trailing-config-without-an-operand-is-ambiguous",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/ROM Archive/Golden Sun.gba\" --config"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-dual-executable-command-is-ambiguous",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/ROM Archive/Golden Sun.gba\" /home/deck/Games/Second.exe"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-wildcard-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/ROM Archive/*.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-placeholder-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/ROM Archive/%ROM%.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-brace-expansion-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/{ROM Archive,Backups}/Game.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-process-substitution-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/<(selector)/Game.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-shell-operator-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/ROM Archive/A|B.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-at-extglob-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/@(ROM Archive)/Game.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-plus-extglob-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/+(ROM Archive)/Game.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-negated-extglob-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/!(ROM Archive)/Game.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-config-followed-by-an-option-is-ambiguous",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f /home/deck/ROMs/Game.gba --config --verbose"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-config-followed-by-a-separator-is-ambiguous",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f /home/deck/ROMs/Game.gba --config &&"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-extensionless-secondary-command-is-ambiguous",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f /home/deck/ROMs/Game.gba /usr/bin/other"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-unknown-option-operand-is-not-a-positional-rom",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/pcsx2-qt.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/pcsx2-qt.sh",
+				"strShortcutLaunchOptions": "--appendconfig /home/deck/config/not-a-rom.iso"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-unknown-inline-option-operand-is-not-a-positional-rom",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/pcsx2-qt.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/pcsx2-qt.sh",
+				"strShortcutLaunchOptions": "--appendconfig=/home/deck/config/not-a-rom.iso"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-unknown-firmware-operand-is-not-a-positional-rom",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/pcsx2-qt.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/pcsx2-qt.sh",
+				"strShortcutLaunchOptions": "--firmware /home/deck/bios/firmware.bin"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-positional-rom-without-supported-grammar-is-ambiguous",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "\"/home/deck/ROM Archive/Golden Sun.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-nested-escaped-rom-quotes",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "configs/steam-rom-manager/userData/parsers/optional/nintendo_gb_mgba.json"
+			},
+			"input": {
+				"strShortcutExe": "\"/home/deck/Emulation/tools/launchers/mgba.sh\"",
+				"strShortcutLaunchOptions": "-f \"\\'/home/deck/ROM Archive/Golden Sun.gba\\'\""
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "emudeck-srm",
+				"payloadPath": "/home/deck/ROM Archive/Golden Sun.gba",
+				"externalIdentityHints": {
+					"romPath": "/home/deck/ROM Archive/Golden Sun.gba"
+				}
+			}
+		},
+		{
+			"id": "emulator-binary-is-not-an-emudeck-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/retroarch",
+				"strShortcutLaunchOptions": "\"/home/deck/ROM Archive/Golden Sun.gba\""
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "missing-fields-fail-closed",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "unknown-launcher-never-promotes-an-argument-to-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/usr/local/bin/unknown-launcher",
+				"strShortcutLaunchOptions": "$(touch should-not-run) \"/home/deck/Games/Game.exe\""
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		}
+	]
+}
