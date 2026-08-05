@@ -130,6 +130,49 @@ Do not restore the backed-up runtime or settings directory for a simple code rol
 - Manual playtime adjustments and configurable presentation.
 - Custom non-Steam cover art; see [Custom Covers](docs/covers.md).
 
+## Grouped games and non-Steam shortcut status
+
+PlayTime can present records that refer to the same game as one grouped record. The
+grouped-games screen keeps two independent facts visible:
+
+- **Inventory status** says whether Steam currently reports the record on this Deck:
+  `current`, `historical`, or `unknown` when inventory evidence is incomplete.
+- **Availability status** says whether the payload can be used now: `running`,
+  `reachable`, `unreachable`, or `unknown`.
+
+These are deliberately separate. A game can be historical but still have saved
+playtime, or current while an external drive is disconnected. Use Refresh to obtain
+new read-only inventory and availability evidence; Refresh does not rewrite an
+association, discard history, or generate a checksum.
+
+The parent shown as a recommendation is only a suggestion. It is based on the current
+component and presence evidence and is never silently persisted. Confirming the group
+is the deliberate action that selects its canonical parent. That parent can have zero
+recorded time, and remains canonical even if a later checksum, refresh, or different
+representative would otherwise sort first. Reparent, detach, and dissolve actions are
+explicit reviewable operations; grouped history is retained when a member disappears
+from the current library.
+
+For non-Steam shortcuts, a shortcut entry or launcher executable is not proof that a
+game is installed. PlayTime accepts a checksum only after its backend resolver proves
+the actual regular payload is reachable. Supported resolver paths are direct Linux
+executables, AppImages, and Windows executables with direct-game evidence, plus
+recognized Heroic native or Flatpak shortcuts using verified Legendary, GOG, Nile, or
+sideload metadata. A missing payload, ambiguous shortcut, custom root, or unverified
+launcher variant remains visible as `unknown` or `unreachable` and is not automatically
+selected or hashed.
+
+Lutris, Bottles, and EmuDeck/Steam ROM Manager are intentionally unsupported in this
+release. They stay fail-closed: PlayTime does not infer a payload, invoke their
+launchers, or treat them as a confirmed installation. If a direct or Heroic game is on
+an external drive, disconnecting the drive changes availability to `unreachable`; it
+does not remove playtime or reparent the group. Reconnect the drive and Refresh before
+requesting a checksum.
+
+Live Deck validation is deferred until representative installations are available. The
+maintainer checklist is in [DEVELOPER.md](DEVELOPER.md); it records the launcher version
+and configuration variant before any support claim is expanded.
+
 ## Development and upstream contributions
 
 This remix uses pnpm 10, Bun, and Python through ephemeral `uv`. Release packaging and CI are described by the repository tooling; end-user installations should use GitHub Release archives rather than building from source.
