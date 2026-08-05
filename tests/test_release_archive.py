@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
+import shutil
 import stat
 import tempfile
 import unittest
@@ -45,6 +47,17 @@ class ReleaseArchiveTests(unittest.TestCase):
             b"cache"
         )
         (self.source / "py_modules" / "test_runtime.py").write_text("test tooling\n")
+        shutil.copy2(ROOT / "requirements-vendored.txt", self.source)
+        shutil.copy2(ROOT / "py_modules" / "safe_yaml.py", self.source / "py_modules")
+        shutil.copytree(
+            ROOT / "py_modules" / "yaml",
+            self.source / "py_modules" / "yaml",
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+        )
+        shutil.copytree(
+            ROOT / "py_modules" / "pyyaml-6.0.3.dist-info",
+            self.source / "py_modules" / "pyyaml-6.0.3.dist-info",
+        )
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -71,6 +84,26 @@ class ReleaseArchiveTests(unittest.TestCase):
             zip_file.writestr(member, data)
         self._recompute_checksum(archive)
 
+    def _rewrite_archive_member(
+        self, archive: Path, member_name: str, replacement: bytes | None
+    ) -> None:
+        rewritten = self.workdir / f"rewritten-{archive.name}"
+        with (
+            zipfile.ZipFile(archive) as source,
+            zipfile.ZipFile(rewritten, "w") as target,
+        ):
+            for member in source.infolist():
+                if member.filename == member_name and replacement is None:
+                    continue
+                contents = (
+                    replacement
+                    if member.filename == member_name and replacement is not None
+                    else source.read(member.filename)
+                )
+                target.writestr(member, contents)
+        os.replace(rewritten, archive)
+        self._recompute_checksum(archive)
+
     def test_stable_archive_has_canonical_payload_checksum_and_root(self) -> None:
         version = "3.3.0+beallio.1"
         archive = self._build(version)
@@ -91,8 +124,14 @@ class ReleaseArchiveTests(unittest.TestCase):
                 "package.json",
                 "plugin.json",
                 "README.md",
+                "requirements-vendored.txt",
                 "dist/",
                 "py_modules/",
+                "py_modules/safe_yaml.py",
+                "py_modules/yaml/__init__.py",
+                "py_modules/yaml/composer.py",
+                "py_modules/pyyaml-6.0.3.dist-info/METADATA",
+                "py_modules/pyyaml-6.0.3.dist-info/licenses/LICENSE",
             ):
                 self.assertIn(f"SDH-PlayTime/{path}", names)
             self.assertNotIn("SDH-PlayTime/py_modules/test_runtime.py", names)
@@ -189,6 +228,86 @@ class ReleaseArchiveTests(unittest.TestCase):
         )
         with self.assertRaises(release_archive.ArchiveValidationError):
             release_archive.validate_archive(duplicate, "3.3.0+beallio.1")
+
+    def test_validation_rejects_invalid_vendored_pyyaml_payload(self) -> None:
+        version = "3.3.0+beallio.1"
+        dist_info = "SDH-PlayTime/py_modules/pyyaml-6.0.3.dist-info"
+        cases = (
+            (
+                "missing wrapper",
+                "rewrite",
+                "SDH-PlayTime/py_modules/safe_yaml.py",
+                None,
+            ),
+            (
+                "missing transitive runtime module",
+                "rewrite",
+                "SDH-PlayTime/py_modules/yaml/composer.py",
+                None,
+            ),
+            (
+                "version mismatch",
+                "rewrite",
+                f"{dist_info}/METADATA",
+                b"Metadata-Version: 2.4\nName: PyYAML\nVersion: 6.0.2\n",
+            ),
+            (
+                "compiled extension",
+                "append",
+                "SDH-PlayTime/py_modules/yaml/_yaml.cpython-311-x86_64-linux-gnu.so",
+                b"compiled",
+            ),
+            (
+                "cache file",
+                "append",
+                "SDH-PlayTime/py_modules/yaml/__pycache__/loader.pyc",
+                b"cache",
+            ),
+            ("installer metadata", "append", f"{dist_info}/INSTALLER", b"uv\n"),
+            (
+                "vendored test",
+                "append",
+                "SDH-PlayTime/py_modules/yaml/tests/test_loader.py",
+                b"test tooling",
+            ),
+            (
+                "undeclared runtime module",
+                "append",
+                "SDH-PlayTime/py_modules/yaml/backdoor.py",
+                b"payload = 'not upstream'\n",
+            ),
+            (
+                "cython source",
+                "append",
+                "SDH-PlayTime/py_modules/yaml/_yaml.pyx",
+                b"native source",
+            ),
+            (
+                "second dist-info",
+                "append",
+                "SDH-PlayTime/py_modules/pyyaml-6.0.4.dist-info/METADATA",
+                b"Name: PyYAML\nVersion: 6.0.4\n",
+            ),
+            ("duplicate metadata", "append", f"{dist_info}/METADATA", b"duplicate"),
+        )
+        for label, operation, member_name, contents in cases:
+            with self.subTest(label=label):
+                archive = self._build(version)
+                if operation == "rewrite":
+                    self._rewrite_archive_member(archive, member_name, contents)
+                else:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", UserWarning)
+                        self._append_member(archive, member_name, contents)
+                with self.assertRaises(release_archive.ArchiveValidationError):
+                    release_archive.validate_archive(archive, version)
+
+    def test_build_rejects_modified_vendored_source_file(self) -> None:
+        (self.source / "py_modules" / "yaml" / "composer.py").write_text(
+            "modified source\n", encoding="utf-8"
+        )
+        with self.assertRaises(release_archive.ArchiveValidationError):
+            self._build("3.3.0+beallio.1")
 
 
 if __name__ == "__main__":
