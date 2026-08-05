@@ -67,6 +67,9 @@ class ReleaseArchiveTests(unittest.TestCase):
             self.source / "py_modules" / "yaml",
             ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
         )
+        yaml_cache = self.source / "py_modules" / "yaml" / "__pycache__"
+        yaml_cache.mkdir()
+        (yaml_cache / "composer.cpython-314.pyc").write_bytes(b"cache")
         shutil.copytree(
             ROOT / "py_modules" / "pyyaml-6.0.3.dist-info",
             self.source / "py_modules" / "pyyaml-6.0.3.dist-info",
@@ -156,6 +159,10 @@ class ReleaseArchiveTests(unittest.TestCase):
                 self.assertIn(f"SDH-PlayTime/{path}", names)
             self.assertNotIn("SDH-PlayTime/py_modules/test_runtime.py", names)
             self.assertNotIn("SDH-PlayTime/py_modules/__pycache__/runtime.pyc", names)
+            self.assertNotIn(
+                "SDH-PlayTime/py_modules/yaml/__pycache__/composer.cpython-314.pyc",
+                names,
+            )
             self.assertNotIn("SDH-PlayTime/py_modules/tests/helpers.py", names)
             self.assertNotIn(
                 "SDH-PlayTime/py_modules/tests/fixtures/fixture.json", names

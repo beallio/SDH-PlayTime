@@ -201,11 +201,12 @@ def _validate_vendored_pyyaml_source(source: Path) -> None:
     try:
         version = _parse_vendored_pyyaml_pin(pin_path.read_text(encoding="utf-8"))
         py_modules = source / "py_modules"
-        relative_paths = [
+        discovered_paths = [
             path.relative_to(source)
             for path in py_modules.rglob("*")
             if path.is_file() and not path.is_symlink()
         ]
+        relative_paths = [path for path in discovered_paths if not _is_excluded(path)]
         _validate_vendored_pyyaml_paths(relative_paths, version)
         payload = {
             PurePosixPath("py_modules", relative_path): (
