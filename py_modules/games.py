@@ -32,29 +32,22 @@ class Games:
         components = self.dao.get_game_identity_components()
         component = components.get(game_id)
         canonical_id = component.canonical_id if component else game_id
-        response = self.dao.get_game(canonical_id)
-
-        if response is None:
-            dictionary_game = next(
-                (
-                    game
-                    for game in self.dao.get_games_dictionary()
-                    if game.id == canonical_id
-                ),
-                None,
-            )
-            if dictionary_game is None:
-                return None
-            canonical_game = Game(dictionary_game.id, dictionary_game.name)
-        else:
-            canonical_game = Game(response.game_id, response.name)
-
         member_ids = component.members if component else (game_id,)
-        total_time = sum(
-            game.time
-            for member_id in member_ids
-            if (game := self.dao.get_game(member_id)) is not None
+        games_by_id = self.dao.get_games(member_ids)
+        canonical_game_information = games_by_id.get(canonical_id)
+        if canonical_game_information is None:
+            return None
+
+        canonical_game = Game(
+            canonical_id,
+            canonical_game_name(
+                component,
+                {member_id: game.name for member_id, game in games_by_id.items()},
+            )
+            if component
+            else canonical_game_information.name or "Unknown Game",
         )
+        total_time = sum(game.time for game in games_by_id.values())
 
         return GamePlaytimeSummary(canonical_game, total_time=total_time)
 

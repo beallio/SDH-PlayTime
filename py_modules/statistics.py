@@ -178,45 +178,15 @@ class Statistics:
             components,
         )
 
-        # For has_prev/has_next, check any of the game IDs
-        has_prev = False
-        has_next = False
-        if game_ids:
-            for gid in game_ids:
-                if self.dao.has_data_before(start_time, gid):
-                    has_prev = True
-                if self.dao.has_data_after(end_time, gid):
-                    has_next = True
-                if has_prev and has_next:
-                    break
-        else:
-            has_prev = self.dao.has_data_before(start_time, None)
-            has_next = self.dao.has_data_after(end_time, None)
+        has_prev, has_next = self.dao.has_data_outside_range(
+            start_time, end_time, game_ids
+        )
 
         return PagedDayStatistics(
             data=combined_data,
             has_prev=has_prev,
             has_next=has_next,
         )
-
-    def get_last_sessions_from_grouped_sessions(
-        self, sessions_by_checksum: Dict[str, List[SessionInformation]]
-    ) -> Dict[str, SessionInformation]:
-        """
-        Gets the last session for each checksum from the grouped sessions.
-        Returns a dictionary mapping checksum to the most recent SessionInformation based on date.
-        """
-        last_sessions_by_checksum: Dict[str, SessionInformation] = {}
-
-        for checksum, sessions in sessions_by_checksum.items():
-            if sessions:
-                last_session = max(
-                    sessions,
-                    key=lambda s: datetime.fromisoformat(s.date.replace("Z", "+00:00")),
-                )
-                last_sessions_by_checksum[checksum] = last_session
-
-        return last_sessions_by_checksum
 
     def get_statistics_for_last_two_weeks(self):
         now = datetime.now()

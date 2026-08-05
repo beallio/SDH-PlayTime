@@ -250,6 +250,52 @@ class Dao:
         with self._db.transactional() as connection:
             return self._has_data_after(connection, date, game_id)
 
+    def has_data_outside_range(
+        self,
+        start_date: datetime.datetime,
+        end_date: datetime.datetime,
+        game_ids: Collection[str] | None = None,
+    ) -> tuple[bool, bool]:
+        """Return whether any selected game has data before or after a range."""
+
+        with self._db.transactional() as connection:
+            if game_ids is None:
+                row = connection.execute(
+                    """
+                    SELECT
+                        EXISTS(SELECT 1 FROM play_time WHERE date_time < ?),
+                        EXISTS(SELECT 1 FROM play_time WHERE date_time > ?)
+                    """,
+                    (start_date.isoformat(), end_date.isoformat()),
+                ).fetchone()
+            else:
+                normalized_game_ids = tuple(sorted(set(game_ids)))
+                if not normalized_game_ids:
+                    return False, False
+
+                placeholders = ", ".join("?" for _ in normalized_game_ids)
+                row = connection.execute(
+                    f"""
+                    SELECT
+                        EXISTS(
+                            SELECT 1 FROM play_time
+                            WHERE date_time < ? AND game_id IN ({placeholders})
+                        ),
+                        EXISTS(
+                            SELECT 1 FROM play_time
+                            WHERE date_time > ? AND game_id IN ({placeholders})
+                        )
+                    """,
+                    (
+                        start_date.isoformat(),
+                        *normalized_game_ids,
+                        end_date.isoformat(),
+                        *normalized_game_ids,
+                    ),
+                ).fetchone()
+
+            return row[0] == 1, row[1] == 1
+
     def _has_data_before(
         self,
         connection: sqlite3.Connection,
@@ -826,6 +872,31 @@ class Dao:
     def get_game(self, game_id: str) -> GameInformationDto | None:
         with self._db.transactional() as connection:
             return self._get_game(connection, game_id)
+
+    def get_games(self, game_ids: Collection[str]) -> Dict[str, GameInformationDto]:
+        """Fetch dictionary and total-time records for a set of game IDs at once."""
+
+        with self._db.transactional() as connection:
+            normalized_game_ids = tuple(sorted(set(game_ids)))
+            if not normalized_game_ids:
+                return {}
+
+            connection.row_factory = _row_to_game_info_dto
+            placeholders = ", ".join("?" for _ in normalized_game_ids)
+            rows = connection.execute(
+                f"""
+                SELECT
+                    gd.game_id,
+                    gd.name,
+                    COALESCE(ot.duration, 0) AS time
+                FROM game_dict gd
+                LEFT JOIN overall_time ot ON gd.game_id = ot.game_id
+                WHERE gd.game_id IN ({placeholders})
+                """,
+                normalized_game_ids,
+            ).fetchall()
+
+            return {game.game_id: game for game in rows}
 
     def _get_game(
         self, connection: sqlite3.Connection, game_id: str

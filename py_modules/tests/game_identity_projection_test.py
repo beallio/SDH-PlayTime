@@ -161,6 +161,8 @@ class GameIdentityProjectionTest(AbstractDatabaseTest):
         )
         overall = self.statistics.per_game_overall_statistic()
         dictionary = Games(self.dao).get_dictionary()
+        explicit_game = Games(self.dao).get_by_id("child")
+        fallback_game = Games(self.dao).get_by_id("fallback-child")
 
         all_time_names = {
             report["game"]["id"]: report["game"]["name"] for report in all_time
@@ -178,6 +180,11 @@ class GameIdentityProjectionTest(AbstractDatabaseTest):
             self.assertEqual(daily_names[canonical_id], "Unknown Game")
             self.assertEqual(overall_names[canonical_id], "Unknown Game")
             self.assertEqual(dictionary_names[canonical_id], "Unknown Game")
+
+        self.assertIsNotNone(explicit_game)
+        self.assertEqual(explicit_game.game.name, "Unknown Game")
+        self.assertIsNotNone(fallback_game)
+        self.assertEqual(fallback_game.game.name, "Unknown Game")
 
     def test_identity_projections_batch_component_requests(self):
         self._save_transitive_bridge_fixture()
@@ -215,6 +222,65 @@ class GameIdentityProjectionTest(AbstractDatabaseTest):
             games.get_dictionary()
 
         self.assertEqual(get_game_files_checksum.call_count, 0)
+
+    def test_component_reads_use_one_batched_game_and_pagination_query(self):
+        self._save_transitive_bridge_fixture()
+        self.dao.save_play_time(datetime(2024, 12, 31, 10, 0), 10, "checksum-leader")
+        self.dao.save_play_time(datetime(2025, 1, 2, 10, 0), 10, "bridge")
+
+        games = Games(self.dao)
+        with (
+            mock.patch.object(
+                self.dao,
+                "get_games",
+                wraps=self.dao.get_games,
+            ) as get_games,
+            mock.patch.object(
+                self.dao,
+                "get_game",
+                wraps=self.dao.get_game,
+            ) as get_game,
+        ):
+            summary = games.get_by_id("bridge")
+
+        self.assertIsNotNone(summary)
+        self.assertEqual(get_games.call_count, 1)
+        self.assertEqual(get_game.call_count, 0)
+        self.assertEqual(
+            set(get_games.call_args.args[0]),
+            {"checksum-leader", "bridge", "child", "explicit-parent"},
+        )
+
+        with (
+            mock.patch.object(
+                self.dao,
+                "has_data_outside_range",
+                wraps=self.dao.has_data_outside_range,
+            ) as has_data_outside_range,
+            mock.patch.object(
+                self.dao,
+                "has_data_before",
+                wraps=self.dao.has_data_before,
+            ) as has_data_before,
+            mock.patch.object(
+                self.dao,
+                "has_data_after",
+                wraps=self.dao.has_data_after,
+            ) as has_data_after,
+        ):
+            daily = self.statistics.daily_statistics_for_period(
+                date(2025, 1, 1), date(2025, 1, 1), "bridge"
+            )
+
+        self.assertTrue(daily.has_prev)
+        self.assertTrue(daily.has_next)
+        self.assertEqual(has_data_outside_range.call_count, 1)
+        self.assertEqual(has_data_before.call_count, 0)
+        self.assertEqual(has_data_after.call_count, 0)
+        self.assertEqual(
+            set(has_data_outside_range.call_args.args[2]),
+            {"checksum-leader", "bridge", "child", "explicit-parent"},
+        )
 
 
 if __name__ == "__main__":
