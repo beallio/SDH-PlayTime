@@ -20,19 +20,114 @@
 			}
 		},
 		{
-			"id": "direct-appimage-target",
+			"id": "direct-appimage-target-without-verified-identity-is-not-a-payload",
 			"source": {
 				"repository": "0u73r-h34v3n/SDH-PlayTime",
-				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
 				"path": "src/steam/utils/GamePaths.ts"
 			},
 			"input": {
 				"strShortcutExe": "\"/home/deck/Applications/Some Game.AppImage\""
 			},
 			"expected": {
-				"status": "recognized",
-				"launcherKind": "direct",
-				"payloadPath": "/home/deck/Applications/Some Game.AppImage",
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "versioned-heroic-appimage-is-launcher-evidence-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/Heroic-2.16.1.AppImage"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "lutris-appimage-is-launcher-evidence-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/Lutris.AppImage"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "lutris",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "cemu-appimage-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/Cemu.AppImage"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "duckstation-appimage-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/DuckStation.AppImage"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "cartridges-appimage-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Applications/Cartridges.AppImage"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "appimage-symlink-shape-is-not-sufficient-payload-evidence",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/Some-Game.AppImage"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
 				"externalIdentityHints": {}
 			}
 		},
@@ -275,6 +370,102 @@
 			},
 			"input": {
 				"strShortcutExe": "/home/deck/$(whoami)/game.x86_64"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-steam-placeholder-after-a-valid-target-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "\"/home/deck/Games/Game.exe\" %command%"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-wildcard-target-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Games/*/Game.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-brace-expansion-target-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/{Games,Backups}/Game.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-process-substitution-target-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "\"/home/deck/<(resolver)/Game.exe\""
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-shell-operator-target-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "\"/home/deck/Games/Game.exe|/home/deck/Games/Fallback.exe\""
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-multiple-executable-tokens-are-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "\"/home/deck/Games/First.exe\" \"/home/deck/Games/Second.exe\""
 			},
 			"expected": {
 				"status": "unknown",
@@ -598,6 +789,57 @@
 			"input": {
 				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
 				"strShortcutLaunchOptions": "--config /home/deck/config/game.iso"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-unknown-option-operand-is-not-a-positional-rom",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/pcsx2-qt.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/pcsx2-qt.sh",
+				"strShortcutLaunchOptions": "--appendconfig /home/deck/config/not-a-rom.iso"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-unknown-inline-option-operand-is-not-a-positional-rom",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/pcsx2-qt.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/pcsx2-qt.sh",
+				"strShortcutLaunchOptions": "--appendconfig=/home/deck/config/not-a-rom.iso"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-unknown-firmware-operand-is-not-a-positional-rom",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/pcsx2-qt.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/pcsx2-qt.sh",
+				"strShortcutLaunchOptions": "--firmware /home/deck/bios/firmware.bin"
 			},
 			"expected": {
 				"status": "ambiguous",

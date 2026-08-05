@@ -34,7 +34,7 @@ const SHARED_OR_LAUNCHER_BINARIES = new Set([
 
 const WRAPPER_SUFFIXES = [".desktop", ".py", ".sh"];
 
-const DIRECT_PAYLOAD_SUFFIXES = [".appimage", ".exe", ".x86", ".x86_64"];
+const DIRECT_PAYLOAD_SUFFIXES = [".exe", ".x86", ".x86_64"];
 
 const ROM_FILE_SUFFIXES = new Set([
 	".3ds",
@@ -65,11 +65,23 @@ const ROM_FILE_SUFFIXES = new Set([
 ]);
 
 const EMUDECK_LAUNCHER_GRAMMARS = {
-	"dolphin-emu.sh": { romOptions: ["-e"], positionalRom: false },
-	"mgba.sh": { romOptions: ["-f"], positionalRom: false },
-	"pcsx2-qt.sh": { romOptions: [], positionalRom: true },
-	"ppsspp.sh": { romOptions: ["-g"], positionalRom: false },
-	"retroarch.sh": { romOptions: [], positionalRom: true },
+	"dolphin-emu.sh": {
+		romOptions: ["-e"],
+		flagOptions: ["-b"],
+		positionalRom: false,
+	},
+	"mgba.sh": { romOptions: ["-f"], flagOptions: [], positionalRom: false },
+	"pcsx2-qt.sh": {
+		romOptions: [],
+		flagOptions: ["-batch", "-fullscreen"],
+		positionalRom: true,
+	},
+	"ppsspp.sh": {
+		romOptions: ["-g"],
+		flagOptions: ["-f"],
+		positionalRom: false,
+	},
+	"retroarch.sh": { romOptions: [], flagOptions: [], positionalRom: true },
 } as const;
 
 const EMULATOR_OPTIONS_WITH_OPERANDS = new Set([
@@ -218,6 +230,17 @@ function basename(path: string | undefined): string | undefined {
 	return path.split(/[\\/]/).at(-1)?.toLowerCase();
 }
 
+function launcherStem(path: string | undefined): string | undefined {
+	const name = basename(path);
+	if (!name) {
+		return;
+	}
+
+	return name
+		.replace(/\.(?:appimage|exe|x86|x86_64)$/, "")
+		.replace(/[-_]\d[\w.-]*$/, "");
+}
+
 function hasFlatpakLauncher(
 	normalized: NormalizedShortcutFields,
 	launcherId: string,
@@ -232,13 +255,14 @@ function hasFlatpakLauncher(
 }
 
 function isHeroicExecutable(path: string | undefined): boolean {
-	const name = basename(path);
-	return name === "heroic" || name === "heroic.appimage";
+	return launcherStem(path) === "heroic";
 }
 
 function isLutrisExecutable(path: string | undefined): boolean {
 	const name = basename(path);
-	return name === "lutris" || Boolean(name?.includes("lutris-wrapper"));
+	return (
+		launcherStem(path) === "lutris" || Boolean(name?.includes("lutris-wrapper"))
+	);
 }
 
 function isBottlesExecutable(path: string | undefined): boolean {
@@ -247,11 +271,15 @@ function isBottlesExecutable(path: string | undefined): boolean {
 
 function isKnownLauncherBinary(path: string | undefined): boolean {
 	const name = basename(path);
+	const stem = launcherStem(path);
 	if (!name) {
 		return false;
 	}
 	return (
 		SHARED_OR_LAUNCHER_BINARIES.has(name) ||
+		SHARED_OR_LAUNCHER_BINARIES.has(stem ?? "") ||
+		stem === "cemu" ||
+		stem === "duckstation" ||
 		name.includes("launcher") ||
 		name.includes("lutris-wrapper") ||
 		name.includes("emulator") ||
@@ -265,11 +293,19 @@ function hasUnresolvedShellExpression(path: string): boolean {
 	return path.includes("$") || path.includes("`");
 }
 
+function isLiteralDirectExecutableToken(path: string): boolean {
+	return (
+		!hasUnresolvedShellExpression(path) &&
+		!/%[a-z][a-z0-9_]*%/i.test(path) &&
+		!/[?*\[\]{}|&;<>]/.test(path)
+	);
+}
+
 function isDirectPayload(path: string | undefined): path is string {
 	if (
 		!path?.startsWith("/") ||
 		isKnownLauncherBinary(path) ||
-		hasUnresolvedShellExpression(path)
+		!isLiteralDirectExecutableToken(path)
 	) {
 		return false;
 	}
@@ -331,9 +367,7 @@ function parseUrl(token: string): URL | undefined {
 }
 
 function getUrlValues(url: URL, names: string[]): string[] {
-	return names.flatMap((name) =>
-		url.searchParams.getAll(name),
-	);
+	return names.flatMap((name) => url.searchParams.getAll(name));
 }
 
 function recognized(
@@ -602,7 +636,10 @@ function classifyEmudeck(
 		}
 
 		if (token.startsWith("-")) {
-			continue;
+			if (grammar.flagOptions.includes(token as never)) {
+				continue;
+			}
+			return ambiguous("emudeck-srm");
 		}
 
 		if (grammar.positionalRom && isRomPath(token)) {
@@ -709,7 +746,10 @@ export function classifyShortcutEvidence(
 	}
 
 	const directPayload = getExecutableToken(normalized);
-	if (isDirectPayload(directPayload)) {
+	if (
+		normalized.executableTokens.length === 1 &&
+		isDirectPayload(directPayload)
+	) {
 		return {
 			...recognized("direct", {}, directPayload),
 			normalized,
@@ -721,7 +761,9 @@ export function classifyShortcutEvidence(
 
 // NOTE(ynhhoJ): https://github.com/0u73r-h34v3n/chrono-deck/blob/master/src/utils/steam/getPathToGameFileByLaunchCommand.ts
 export default function getEmudeckPathToGame(launchCommand: string) {
-	const normalized = normalizeShortcutEvidence({ strShortcutExe: launchCommand });
+	const normalized = normalizeShortcutEvidence({
+		strShortcutExe: launchCommand,
+	});
 	if (parseTokens(launchCommand).hasUnterminatedQuote) {
 		return;
 	}
