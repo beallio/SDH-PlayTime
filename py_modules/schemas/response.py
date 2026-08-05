@@ -47,7 +47,7 @@ class GamePlaytimeDetails(GamePlaytimeSummary):
 
 @dataclass(slots=True)
 class GamePlaytimeReport(GamePlaytimeSummary):
-    last_played_date: str
+    last_played_date: str | None
     aliases_id: str | None
 
     def to_dict(self) -> Dict[str, Any]:
