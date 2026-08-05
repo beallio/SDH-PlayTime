@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { rankAssociationParent } from "@src/app/associationRanking";
 import {
 	refreshCurrentGamePresenceSnapshot,
 	type GamePresenceSnapshot,
@@ -15,20 +14,12 @@ import {
 	buildAssociationCandidateCards,
 	buildAssociationConfirmationRequest,
 	buildAssociationConfirmationSummary,
-	getAssociationAdditionDecision,
-	getAssociationComponentCandidates,
-	selectInitialAssociationParent,
 	shouldRefreshAssociationComponent,
 } from "../associationViewModel";
 import {
+	createAssociationSelectionController,
 	createAssociationRequestCoordinator,
-	getInitialAssociationComponentSelection,
 } from "../associationSelectionController";
-
-const incompleteInventories: GamePresenceSnapshot["inventories"] = {
-	native_steam: { status: "incomplete", reason: "loading" },
-	non_steam: { status: "incomplete", reason: "loading" },
-};
 
 /** Loads one explicit identity component; it never presents the full inventory as a group. */
 export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
@@ -40,14 +31,12 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 	const [anchorGameId, setAnchorGameId] = useState<string | null>(
 		initialAnchorGameId,
 	);
-	const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
-	const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
+	const [selectionState, setSelectionState] = useState<ReturnType<
+		ReturnType<typeof createAssociationSelectionController>["getState"]
+	> | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [additionMessages, setAdditionMessages] = useState<
-		Record<string, string>
-	>({});
 	const loadedInitialAnchor = useRef<string | null>(null);
 	const mounted = useRef(true);
 	const presenceRef = useRef<GamePresenceSnapshot | null>(null);
@@ -58,19 +47,24 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 	const presenceRequests = useRef<ReturnType<
 		typeof createAssociationRequestCoordinator
 	> | null>(null);
+	const selectionController = useRef<ReturnType<
+		typeof createAssociationSelectionController
+	> | null>(null);
 	if (!componentRequests.current)
 		componentRequests.current = createAssociationRequestCoordinator();
 	if (!presenceRequests.current)
 		presenceRequests.current = createAssociationRequestCoordinator();
 
-	useEffect(
-		() => () => {
+	useEffect(() => {
+		mounted.current = true;
+		return () => {
 			mounted.current = false;
 			componentRequests.current?.invalidate();
 			presenceRequests.current?.invalidate();
-		},
-		[],
-	);
+			selectionController.current?.dispose();
+			selectionController.current = null;
+		};
+	}, []);
 
 	const refreshPresence = useCallback(async () => {
 		const request = presenceRequests.current?.begin();
@@ -83,6 +77,7 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 			)
 				return null;
 			presenceRef.current = nextPresence;
+			selectionController.current?.updatePresence(nextPresence);
 			setPresence(nextPresence);
 			return nextPresence;
 		} catch (cause) {
@@ -126,16 +121,22 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 				setLoading(false);
 				return null;
 			}
-			const selection = getInitialAssociationComponentSelection(
-				result.data,
-				presenceSnapshot ?? presenceRef.current,
-			);
+			selectionController.current?.dispose();
+			const nextSelectionController = createAssociationSelectionController({
+				snapshot: result.data,
+				presence: presenceSnapshot ?? presenceRef.current,
+				onChange: setSelectionState,
+				onRefreshRequested: () => {
+					void loadComponent(result.data.anchorGameId, undefined, {
+						preserveError: true,
+					});
+				},
+			});
+			selectionController.current = nextSelectionController;
 			setAnchorGameId(nextAnchorGameId);
 			snapshotRef.current = result.data;
 			setSnapshot(result.data);
-			setSelectedMemberIds(selection.selectedMemberIds);
-			setSelectedParentId(selection.selectedParentId);
-			setAdditionMessages({});
+			setSelectionState(nextSelectionController.getState());
 			setLoading(false);
 			return result.data;
 		},
@@ -158,40 +159,13 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 		void loadComponent(initialAnchorGameId, undefined, { preserveError: true });
 	}, [initialAnchorGameId, loadComponent]);
 
-	const componentCandidates = useMemo(
-		() =>
-			snapshot
-				? getAssociationComponentCandidates(
-						snapshot,
-						presence?.candidates ?? [],
-					)
-				: [],
-		[presence, snapshot],
-	);
-	const ranking = useMemo(
-		() =>
-			snapshot
-				? rankAssociationParent({
-						candidates: componentCandidates,
-						inventories: presence?.inventories ?? incompleteInventories,
-						confirmedParentId: snapshot.expectedParentGameId,
-						conflict: snapshot.status === "conflict",
-					})
-				: null,
-		[componentCandidates, presence, snapshot],
-	);
-
-	useEffect(() => {
-		if (!snapshot || !presence || selectedParentId) return;
-		setSelectedParentId(
-			selectInitialAssociationParent({
-				candidates: componentCandidates,
-				inventories: presence.inventories,
-				confirmedParentId: snapshot.expectedParentGameId,
-				conflict: snapshot.status === "conflict",
-			}),
-		);
-	}, [componentCandidates, presence, selectedParentId, snapshot]);
+	const componentCandidates = selectionState?.componentCandidates ?? [];
+	const additionCandidates = selectionState?.additionCandidates ?? [];
+	const selectedCandidates = selectionState?.selectedCandidates ?? [];
+	const selectedMemberIds = selectionState?.selectedMemberIds ?? [];
+	const selectedParentId = selectionState?.selectedParentId ?? null;
+	const ranking = selectionState?.ranking ?? null;
+	const additionMessages = selectionState?.additionMessages ?? {};
 
 	const componentCards = useMemo(
 		() =>
@@ -202,27 +176,14 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 			}),
 		[componentCandidates, ranking, selectedParentId],
 	);
-	const additionCandidates = useMemo(() => {
-		if (!snapshot) return [];
-		const componentMemberIds = new Set(
-			snapshot.existingMembers.map((member) => member.gameId),
-		);
-		return (presence?.candidates ?? []).filter(
-			(candidate) => !componentMemberIds.has(candidate.id),
-		);
-	}, [presence, snapshot]);
 	const additionCards = useMemo(
 		() =>
 			buildAssociationCandidateCards({
 				candidates: additionCandidates,
 				selectedParentId,
-				recommendedParentId: null,
+				recommendedParentId: ranking?.advisoryRecommendation?.gameId ?? null,
 			}),
-		[additionCandidates, selectedParentId],
-	);
-	const selectedCandidates = useMemo(
-		() => [...componentCandidates, ...additionCandidates],
-		[additionCandidates, componentCandidates],
+		[additionCandidates, ranking, selectedParentId],
 	);
 	const anchorCards = useMemo(
 		() =>
@@ -233,18 +194,9 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 			}),
 		[presence],
 	);
-	const allMembersSelected =
-		!!snapshot &&
-		snapshot.existingMembers.every((member) =>
-			selectedMemberIds.includes(member.gameId),
-		);
-	const hasEnoughMembers = selectedMemberIds.length >= 2;
-	const canConfirm =
-		!!snapshot &&
-		!!selectedParentId &&
-		allMembersSelected &&
-		hasEnoughMembers &&
-		!saving;
+	const allMembersSelected = selectionState?.allMembersSelected ?? false;
+	const hasEnoughMembers = selectionState?.hasEnoughMembers ?? false;
+	const canConfirm = (selectionState?.canConfirm ?? false) && !saving;
 
 	const selectAnchor = useCallback(
 		(nextAnchorGameId: string) => {
@@ -253,89 +205,22 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 		[loadComponent],
 	);
 
-	const ensureAddition = useCallback(
-		async (gameId: string) => {
-			const loadedSnapshot = snapshotRef.current;
-			if (!loadedSnapshot) return false;
-			if (
-				loadedSnapshot.existingMembers.some(
-					(member) => member.gameId === gameId,
-				) ||
-				selectedMemberIds.includes(gameId)
-			)
-				return true;
-			const componentRequest = componentRequests.current?.current();
-			const result = await associationService.getAssociationComponent(gameId);
-			if (
-				!mounted.current ||
-				componentRequest === undefined ||
-				!componentRequests.current?.isCurrent(componentRequest) ||
-				snapshotRef.current !== loadedSnapshot
-			)
-				return false;
-			if (!result.success) {
-				const message =
-					"This entry could not be verified as an eligible addition. Refresh status and try again.";
-				setAdditionMessages((current) => ({ ...current, [gameId]: message }));
-				setError(message);
-				return false;
-			}
-			const decision = getAssociationAdditionDecision({
-				loadedSnapshot,
-				candidateSnapshot: result.data,
-			});
-			if (decision.action !== "add") {
-				setAdditionMessages((current) => ({
-					...current,
-					[gameId]: decision.message,
-				}));
-				setError(decision.message);
-				if (decision.action === "refresh")
-					void loadComponent(loadedSnapshot.anchorGameId, undefined, {
-						preserveError: true,
-					});
-				return false;
-			}
-			setAdditionMessages((current) => {
-				const remaining = { ...current };
-				delete remaining[gameId];
-				return remaining;
-			});
-			setSelectedMemberIds((current) =>
-				current.includes(gameId) ? current : [...current, gameId],
-			);
-			return true;
-		},
-		[associationService, loadComponent, selectedMemberIds],
-	);
-
 	const toggleMember = useCallback(
 		async (gameId: string) => {
-			if (!snapshot) return;
-			if (snapshot.existingMembers.some((member) => member.gameId === gameId))
-				return;
-			if (selectedMemberIds.includes(gameId)) {
-				setSelectedMemberIds((current) =>
-					current.filter((selectedGameId) => selectedGameId !== gameId),
-				);
-				setSelectedParentId((current) => (current === gameId ? null : current));
-				return;
-			}
-			await ensureAddition(gameId);
+			await selectionController.current?.toggleMember(gameId, () =>
+				associationService.getAssociationComponent(gameId),
+			);
 		},
-		[ensureAddition, selectedMemberIds, snapshot],
+		[associationService],
 	);
 
 	const selectParent = useCallback(
 		async (gameId: string) => {
-			if (!snapshot) return;
-			const isExistingMember = snapshot.existingMembers.some(
-				(member) => member.gameId === gameId,
+			await selectionController.current?.selectParent(gameId, () =>
+				associationService.getAssociationComponent(gameId),
 			);
-			if (!isExistingMember && !(await ensureAddition(gameId))) return;
-			setSelectedParentId(gameId);
 		},
-		[ensureAddition, snapshot],
+		[associationService],
 	);
 
 	const refresh = useCallback(async () => {
@@ -356,8 +241,7 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 			if (
 				!snapshot ||
 				!selectedParentId ||
-				!allMembersSelected ||
-				!hasEnoughMembers
+				!canConfirm
 			)
 				return null;
 			const summary = buildAssociationConfirmationSummary({
@@ -387,9 +271,8 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 				setSaving(false);
 			}
 		}, [
-			allMembersSelected,
 			associationService,
-			hasEnoughMembers,
+			canConfirm,
 			ranking,
 			refresh,
 			selectedMemberIds,
@@ -402,8 +285,7 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 		if (
 			!snapshot ||
 			!selectedParentId ||
-			!allMembersSelected ||
-			!hasEnoughMembers
+			!canConfirm
 		)
 			return null;
 		return buildAssociationConfirmationSummary({
@@ -414,8 +296,7 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 			reasons: associationRankingReasonLabels(ranking?.reasons ?? []),
 		});
 	}, [
-		allMembersSelected,
-		hasEnoughMembers,
+		canConfirm,
 		ranking,
 		selectedMemberIds,
 		selectedCandidates,
@@ -430,10 +311,11 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 		snapshot,
 		loading,
 		saving,
-		error,
+		error: error ?? selectionState?.error ?? null,
 		selectedMemberIds,
 		selectedParentId,
 		additionMessages,
+		pendingCandidateIds: selectionState?.pendingCandidateIds ?? [],
 		allMembersSelected,
 		hasEnoughMembers,
 		canConfirm,

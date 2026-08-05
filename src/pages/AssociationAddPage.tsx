@@ -43,6 +43,7 @@ export function AssociationAddPage() {
 		error,
 		selectedMemberIds,
 		additionMessages,
+		pendingCandidateIds,
 		allMembersSelected,
 		hasEnoughMembers,
 		canConfirm,
@@ -193,7 +194,7 @@ export function AssociationAddPage() {
 							</PanelSectionRow>
 
 							<PanelSectionRow>
-								<Field label="Eligible additions">
+								<Field label="Candidate additions">
 									<div
 										style={{
 											fontSize: "11px",
@@ -202,7 +203,7 @@ export function AssociationAddPage() {
 										}}
 									>
 										Include one or more entries to create or expand this group.
-										Each addition is checked against its own explicit component
+										Each candidate is checked against its own explicit component
 										before it can be selected.
 									</div>
 								</Field>
@@ -224,6 +225,7 @@ export function AssociationAddPage() {
 											onToggleMember={() => void toggleMember(card.id)}
 											onSelectParent={() => void selectParent(card.id)}
 											membershipMessage={additionMessages[card.id]}
+											checkingEligibility={pendingCandidateIds.includes(card.id)}
 										/>
 									))}
 								</div>

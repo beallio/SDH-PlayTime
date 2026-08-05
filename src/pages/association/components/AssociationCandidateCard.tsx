@@ -8,6 +8,7 @@ type AssociationCandidateCardProps = {
 	onSelectParent?: () => void;
 	primaryActionLabel?: string;
 	membershipMessage?: string;
+	checkingEligibility?: boolean;
 };
 
 function StatusPill({ children }: { children: string }) {
@@ -38,6 +39,7 @@ export function AssociationCandidateCard({
 	onSelectParent,
 	primaryActionLabel,
 	membershipMessage,
+	checkingEligibility,
 }: AssociationCandidateCardProps) {
 	return (
 		<Focusable
@@ -77,6 +79,7 @@ export function AssociationCandidateCard({
 				{card.recommendationLabel && (
 					<StatusPill>{card.recommendationLabel}</StatusPill>
 				)}
+				{checkingEligibility && <StatusPill>Checking eligibility</StatusPill>}
 			</div>
 
 			{card.manualParentWarning && card.isSelectedParent && (
