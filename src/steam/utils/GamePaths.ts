@@ -36,6 +36,35 @@ const WRAPPER_SUFFIXES = [".desktop", ".py", ".sh"];
 
 const DIRECT_PAYLOAD_SUFFIXES = [".exe", ".x86", ".x86_64"];
 
+const EXECUTABLE_TOKEN_SUFFIXES = [...DIRECT_PAYLOAD_SUFFIXES, ".appimage"];
+
+const KNOWN_LAUNCHER_STEMS = new Set([
+	"bottles",
+	"cartridges",
+	"gamehub",
+	"heroic",
+	"itch",
+	"legendary",
+	"lutris",
+	"minigalaxy",
+	"playnite",
+	"proton",
+	"steam",
+	"ubisoftconnect",
+	"wine",
+]);
+
+const KNOWN_EMULATOR_STEMS = new Set([
+	"cemu",
+	"dolphin",
+	"duckstation",
+	"pcsx2",
+	"ppsspp",
+	"retroarch",
+	"rpcs3",
+	"ryujinx",
+]);
+
 const ROM_FILE_SUFFIXES = new Set([
 	".3ds",
 	".bin",
@@ -94,6 +123,19 @@ const EMULATOR_OPTIONS_WITH_OPERANDS = new Set([
 	"--shader",
 	"--state",
 	"-L",
+]);
+
+const KNOWN_OPTIONS_WITH_OPERANDS = new Set([
+	...EMULATOR_OPTIONS_WITH_OPERANDS,
+	"-b",
+	"--bottle",
+	"-p",
+	"--program",
+	"--name",
+	"--id",
+	"--program-id",
+	"-e",
+	"--executable",
 ]);
 
 interface ParsedTokens {
@@ -238,7 +280,10 @@ function launcherStem(path: string | undefined): string | undefined {
 
 	return name
 		.replace(/\.(?:appimage|exe|x86|x86_64)$/, "")
-		.replace(/[-_]\d[\w.-]*$/, "");
+		.replace(
+			/(?:[-_.](?:\d+(?:[._-]\d+)*|x86_64|x64|x86|qt|release(?:ltcg)?|ltcg|linux|win(?:32|64)?))+$/i,
+			"",
+		);
 }
 
 function hasFlatpakLauncher(
@@ -278,8 +323,8 @@ function isKnownLauncherBinary(path: string | undefined): boolean {
 	return (
 		SHARED_OR_LAUNCHER_BINARIES.has(name) ||
 		SHARED_OR_LAUNCHER_BINARIES.has(stem ?? "") ||
-		stem === "cemu" ||
-		stem === "duckstation" ||
+		KNOWN_LAUNCHER_STEMS.has(stem ?? "") ||
+		KNOWN_EMULATOR_STEMS.has(stem ?? "") ||
 		name.includes("launcher") ||
 		name.includes("lutris-wrapper") ||
 		name.includes("emulator") ||
@@ -297,11 +342,12 @@ function isLiteralDirectExecutableToken(path: string): boolean {
 	return (
 		!hasUnresolvedShellExpression(path) &&
 		!/%[a-z][a-z0-9_]*%/i.test(path) &&
-		!/[?*\[\]{}|&;<>]/.test(path)
+		!/[?*[\]{}|&;<>]/.test(path) &&
+		!/[!+@]\(/.test(path)
 	);
 }
 
-function isDirectPayload(path: string | undefined): path is string {
+function isDirectPayloadCandidate(path: string | undefined): path is string {
 	if (
 		!path?.startsWith("/") ||
 		isKnownLauncherBinary(path) ||
@@ -342,9 +388,50 @@ function isRomPath(token: string): boolean {
 	const lowercaseToken = token.toLowerCase();
 	return (
 		token.startsWith("/") &&
-		!hasUnresolvedShellExpression(token) &&
+		isLiteralDirectExecutableToken(token) &&
 		!isKnownLauncherBinary(token) &&
 		[...ROM_FILE_SUFFIXES].some((suffix) => lowercaseToken.endsWith(suffix))
+	);
+}
+
+function isExecutableToken(token: string): boolean {
+	const lowercaseToken = token.toLowerCase();
+	return (
+		(token.startsWith("/") || /^[a-z]:[\\/]/i.test(token)) &&
+		EXECUTABLE_TOKEN_SUFFIXES.some((suffix) => lowercaseToken.endsWith(suffix))
+	);
+}
+
+function hasMissingKnownOptionOperand(tokens: string[]): boolean {
+	for (let index = 0; index < tokens.length; index++) {
+		const token = tokens[index];
+		for (const option of KNOWN_OPTIONS_WITH_OPERANDS) {
+			if (token === option) {
+				const operand = tokens[index + 1];
+				if (!operand || operand === "--") {
+					return true;
+				}
+				index++;
+				break;
+			}
+			if (
+				token.startsWith(`${option}=`) &&
+				!stripNestedQuotes(token.slice(option.length + 1))
+			) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+function isStructurallyCompleteCommand(
+	normalized: NormalizedShortcutFields,
+): boolean {
+	return (
+		normalized.executableTokens.length === 1 &&
+		!normalized.launchOptionTokens.some(isExecutableToken) &&
+		!hasMissingKnownOptionOperand(normalized.launchOptionTokens)
 	);
 }
 
@@ -421,6 +508,9 @@ function classifyHeroic(
 	if (!isHeroicLauncher) {
 		return;
 	}
+	if (!isStructurallyCompleteCommand(normalized)) {
+		return ambiguous("heroic");
+	}
 
 	const appNames: string[] = [];
 	const runners: string[] = [];
@@ -476,6 +566,9 @@ function classifyLutris(
 
 	if (!isLutrisLauncher) {
 		return;
+	}
+	if (!isStructurallyCompleteCommand(normalized)) {
+		return ambiguous("lutris");
 	}
 
 	const gameIds: string[] = [];
@@ -552,6 +645,9 @@ function classifyBottles(
 	if (!isBottlesLauncher) {
 		return;
 	}
+	if (!isStructurallyCompleteCommand(normalized)) {
+		return ambiguous("bottles");
+	}
 
 	const tokens = isBottlesExecutable(executable)
 		? normalized.launchOptionTokens
@@ -611,6 +707,9 @@ function classifyEmudeck(
 	const grammar = getEmudeckLauncherGrammar(getExecutableToken(normalized));
 	if (!grammar) {
 		return;
+	}
+	if (!isStructurallyCompleteCommand(normalized)) {
+		return ambiguous("emudeck-srm");
 	}
 
 	const romCandidates: string[] = [];
@@ -747,11 +846,11 @@ export function classifyShortcutEvidence(
 
 	const directPayload = getExecutableToken(normalized);
 	if (
-		normalized.executableTokens.length === 1 &&
-		isDirectPayload(directPayload)
+		isStructurallyCompleteCommand(normalized) &&
+		isDirectPayloadCandidate(directPayload)
 	) {
 		return {
-			...recognized("direct", {}, directPayload),
+			...recognized("direct"),
 			normalized,
 		};
 	}
@@ -779,19 +878,35 @@ export default function getEmudeckPathToGame(launchCommand: string) {
 		: undefined;
 }
 
-export async function getPathToGame(applicationId: number) {
+export async function getPathToGame(
+	applicationId: number,
+	resolveDirectPayload?: DirectPayloadResolver,
+) {
 	const appDetails = await getAppDetails(applicationId);
 	if (!appDetails) {
 		return;
 	}
 
 	const evidence = classifyShortcutEvidence(appDetails);
-	if (!evidence.payloadPath) {
+	const directCandidate =
+		evidence.launcherKind === "direct" && evidence.status === "recognized"
+			? evidence.normalized.executableTokens[0]
+			: undefined;
+	const directEvidence = directCandidate
+		? await resolveDirectPayload?.(directCandidate)
+		: undefined;
+	const payloadPath =
+		directCandidate &&
+		directEvidence?.isRegularFile &&
+		!directEvidence.isSymbolicLink
+			? directCandidate
+			: evidence.payloadPath;
+	if (!payloadPath) {
 		logger.error("Unsupported pathToGame:", {
 			strShortcutExe: appDetails.strShortcutExe,
 			strShortcutLaunchOptions: appDetails.strShortcutLaunchOptions,
 		});
 	}
 
-	return evidence.payloadPath;
+	return payloadPath;
 }

@@ -15,7 +15,6 @@
 			"expected": {
 				"status": "recognized",
 				"launcherKind": "direct",
-				"payloadPath": "/home/deck/Games/Space Game/space-game.x86_64",
 				"externalIdentityHints": {}
 			}
 		},
@@ -144,7 +143,6 @@
 			"expected": {
 				"status": "recognized",
 				"launcherKind": "direct",
-				"payloadPath": "/run/media/deck/SD Card/Games/Game.exe",
 				"externalIdentityHints": {}
 			}
 		},
@@ -341,7 +339,6 @@
 			"expected": {
 				"status": "recognized",
 				"launcherKind": "direct",
-				"payloadPath": "/home/deck/Games/Literal%20Name%25/game.x86_64",
 				"externalIdentityHints": {}
 			}
 		},
@@ -474,6 +471,118 @@
 			}
 		},
 		{
+			"id": "versioned-ubisoft-connect-executable-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/UbisoftConnect-2.0.1.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "playnite-executable-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/Playnite.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "versioned-duckstation-executable-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/DuckStation-qt-x64-ReleaseLTCG.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "suffix-bearing-symlink-shape-is-not-checksum-eligible-without-filesystem-evidence",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/Game.exe"
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "direct",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-at-extglob-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/@(Games)/Game.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-plus-extglob-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/+(Games)/Game.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "direct-negated-extglob-is-not-a-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/!(Games)/Game.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
 			"id": "heroic-native-query-with-uri-encoded-alternate-executable",
 			"source": {
 				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
@@ -492,6 +601,40 @@
 					"heroicRunner": "legendary",
 					"heroicAltExe": "/home/deck/Games/Space Game/Game.exe"
 				}
+			}
+		},
+		{
+			"id": "heroic-dual-executable-command-is-ambiguous",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/opt/Heroic/heroic",
+				"strShortcutLaunchOptions": "heroic://launch?appName=space-game /home/deck/Games/Second.exe"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "heroic-config-without-an-operand-is-ambiguous",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/opt/Heroic/heroic",
+				"strShortcutLaunchOptions": "heroic://launch?appName=space-game --config"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
 			}
 		},
 		{
@@ -789,6 +932,176 @@
 			"input": {
 				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
 				"strShortcutLaunchOptions": "--config /home/deck/config/game.iso"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-trailing-config-without-an-operand-is-ambiguous",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/ROM Archive/Golden Sun.gba\" --config"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-dual-executable-command-is-ambiguous",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/ROM Archive/Golden Sun.gba\" /home/deck/Games/Second.exe"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-wildcard-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/ROM Archive/*.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-placeholder-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/ROM Archive/%ROM%.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-brace-expansion-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/{ROM Archive,Backups}/Game.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-process-substitution-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/<(selector)/Game.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-shell-operator-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/ROM Archive/A|B.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-at-extglob-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/@(ROM Archive)/Game.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-plus-extglob-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/+(ROM Archive)/Game.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-negated-extglob-rom-is-not-a-payload",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f \"/home/deck/!(ROM Archive)/Game.gba\""
 			},
 			"expected": {
 				"status": "ambiguous",

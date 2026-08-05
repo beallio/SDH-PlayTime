@@ -48,6 +48,18 @@ interface ShortcutEvidenceClassification {
 	payloadPath?: string;
 }
 
+interface DirectPayloadFilesystemEvidence {
+	isRegularFile: boolean;
+	isSymbolicLink: boolean;
+}
+
+type DirectPayloadResolver = (
+	candidatePath: string,
+) =>
+	| DirectPayloadFilesystemEvidence
+	| undefined
+	| Promise<DirectPayloadFilesystemEvidence | undefined>;
+
 type AppDetailsFailureReason =
 	| "unsupported-runtime"
 	| "registration-error"

@@ -30,14 +30,32 @@ function setShortcutDetails(shortcut: ShortcutEvidenceInput) {
 }
 
 describe("getPathToGame compatibility", () => {
-	test("keeps a direct Windows shortcut target available to the checksum caller", async () => {
+	test("requires injected regular-file evidence before returning a direct target", async () => {
 		setShortcutDetails({
 			strShortcutExe: '"/run/media/deck/SD Card/Games/Game.exe"',
 		});
 
-		await expect(getPathToGame(1)).resolves.toBe(
-			"/run/media/deck/SD Card/Games/Game.exe",
-		);
+		await expect(getPathToGame(1)).resolves.toBeUndefined();
+
+		await expect(
+			getPathToGame(1, async (candidatePath) => {
+				expect(candidatePath).toBe("/run/media/deck/SD Card/Games/Game.exe");
+				return { isRegularFile: true, isSymbolicLink: false };
+			}),
+		).resolves.toBe("/run/media/deck/SD Card/Games/Game.exe");
+	});
+
+	test("does not return a direct shortcut target when filesystem evidence reports a symlink", async () => {
+		setShortcutDetails({
+			strShortcutExe: '"/run/media/deck/SD Card/Games/Game.exe"',
+		});
+
+		await expect(
+			getPathToGame(1, async () => ({
+				isRegularFile: true,
+				isSymbolicLink: true,
+			})),
+		).resolves.toBeUndefined();
 	});
 
 	test("does not return a shared Wine launcher to the checksum caller", async () => {
