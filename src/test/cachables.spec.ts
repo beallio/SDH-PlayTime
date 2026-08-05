@@ -8,6 +8,18 @@ mock.module("@decky/api", () => ({
 
 const { buildPlayTimeMap } = await import("../cachables");
 
+const gameParentProjection = (await Bun.file(
+	new URL("../../tests/fixtures/game-parent-projection.json", import.meta.url),
+).json()) as {
+	canonicalRecord: {
+		game: { id: string; name: string };
+		totalTime: number;
+		lastPlayedDate: string;
+		aliasesId: string;
+	};
+	aliases: string[];
+};
+
 describe("buildPlayTimeMap", () => {
 	it("maps unmerged record to its own game ID with falsey isMerged", () => {
 		const records = [
@@ -52,28 +64,15 @@ describe("buildPlayTimeMap", () => {
 	});
 
 	it("keeps an RPC-confirmed zero-time parent canonical over checksum leaders", () => {
-		const map = buildPlayTimeMap([
-			{
-				game: { id: "explicit-parent" },
-				totalTime: 60,
-				lastPlayedDate: "2025-01-01T12:00:00Z",
-				aliasesId:
-					"checksum-leader,hidden-child,representative-child,third-leader",
-			},
-		]);
+		const map = buildPlayTimeMap([gameParentProjection.canonicalRecord]);
 
-		const parent = map.get("explicit-parent");
+		const parent = map.get(gameParentProjection.canonicalRecord.game.id);
 		expect(parent).toEqual({
 			time: 60,
 			lastDate: 1735732800,
 			isMerged: true,
 		});
-		for (const childId of [
-			"checksum-leader",
-			"hidden-child",
-			"representative-child",
-			"third-leader",
-		]) {
+		for (const childId of gameParentProjection.aliases) {
 			expect(map.get(childId)).toBe(parent);
 		}
 	});

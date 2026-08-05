@@ -1,4 +1,5 @@
 import unittest
+import json
 import os
 import shutil
 import tempfile
@@ -8,6 +9,11 @@ from contextlib import closing
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from py_modules.tests.helpers import remove_date_fields
+
+
+GAME_PARENT_PROJECTION_FIXTURE_PATH = (
+    Path(__file__).parents[2] / "tests" / "fixtures" / "game-parent-projection.json"
+)
 
 
 class TestPlugin(unittest.IsolatedAsyncioTestCase):
@@ -564,13 +570,24 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
 
     async def test_grouped_confirmation_projects_one_canonical_parent_everywhere(self):
         """The RPC-selected parent must win over checksum order in every projection."""
+        fixture = json.loads(
+            GAME_PARENT_PROJECTION_FIXTURE_PATH.read_text(encoding="utf-8")
+        )
+        canonical_record = fixture["canonicalRecord"]
+        assert isinstance(canonical_record, dict)
+        canonical_parent = fixture["canonicalParent"]
+        assert isinstance(canonical_parent, dict)
+        aliases = fixture["aliases"]
+        assert isinstance(aliases, list)
+        steam_alias = fixture["steamAlias"]
+        assert isinstance(steam_alias, int)
         plugin = self.main.Plugin()
         await plugin._main()
         await plugin.set_current_user("76561198077777775")
         dao = plugin.association_manager.dao
 
         for game_id, name in (
-            ("checksum-leader", "Checksum Leader"),
+            (str(steam_alias), "Steam Shortcut Alias"),
             ("representative-child", "Representative Child"),
             ("hidden-child", "Hidden Child"),
             ("third-leader", "Third Leader"),
@@ -580,17 +597,17 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
 
         # Two confirmed parents become one checksum component only after both stars
         # exist. The explicit, zero-time parent selected through the RPC must win.
-        dao.create_game_association("checksum-leader", "representative-child")
+        dao.create_game_association(str(steam_alias), "representative-child")
         dao.create_game_association("third-leader", "hidden-child")
         for game_id, checksum in (
-            ("checksum-leader", "left"),
+            (str(steam_alias), "left"),
             ("representative-child", "left"),
             ("representative-child", "right"),
             ("hidden-child", "right"),
         ):
             dao.save_game_checksum(game_id, checksum, "SHA256", 1, None, None)
         for game_id, seconds in (
-            ("checksum-leader", 10),
+            (str(steam_alias), 10),
             ("representative-child", 20),
             ("hidden-child", 30),
         ):
@@ -606,7 +623,10 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
                 "expected_parent_game_id": None,
                 "expected_fingerprint": snapshot["data"]["fingerprint"],
                 "selected_members": [
-                    {"game_id": "checksum-leader", "game_name": "Checksum Leader"},
+                    {
+                        "game_id": str(steam_alias),
+                        "game_name": "Steam Shortcut Alias",
+                    },
                     {
                         "game_id": "representative-child",
                         "game_name": "Representative Child",
@@ -621,17 +641,13 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(confirmation["success"], True)
         self.assertEqual(
             confirmation["data"]["confirmedParent"],
-            {"gameId": "explicit-parent", "gameName": "Explicit Parent"},
+            {
+                "gameId": canonical_parent["gameId"],
+                "gameName": canonical_parent["gameName"],
+            },
         )
-        self.assertEqual(
-            confirmation["data"]["aliases"],
-            [
-                "checksum-leader",
-                "hidden-child",
-                "representative-child",
-                "third-leader",
-            ],
-        )
+        self.assertEqual(canonical_parent["recordedSeconds"], 0)
+        self.assertEqual(confirmation["data"]["aliases"], aliases)
 
         all_time = await plugin.fetch_playtime_information()
         daily = await plugin.daily_statistics_for_period(
@@ -639,35 +655,50 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
         )
         overall = await plugin.per_game_overall_statistics()
         dictionary = await plugin.get_games_dictionary()
-        for projection in (all_time, overall):
-            canonical = next(
-                entry
-                for entry in projection
-                if entry["game"]["id"] == "explicit-parent"
-            )
-            self.assertEqual(canonical["totalTime"], 60)
-        self.assertEqual(
-            all_time[0]["aliasesId"],
-            "checksum-leader,hidden-child,representative-child,third-leader",
+        all_time_canonical = next(
+            entry
+            for entry in all_time
+            if entry["game"]["id"] == canonical_record["game"]["id"]
         )
-        self.assertEqual(daily["data"][0]["games"][0]["game"]["id"], "explicit-parent")
-        self.assertEqual(daily["data"][0]["games"][0]["totalTime"], 60)
+        self.assertEqual(
+            {
+                key: all_time_canonical[key]
+                for key in ("game", "totalTime", "lastPlayedDate", "aliasesId")
+            },
+            canonical_record,
+        )
+        daily_canonical = daily["data"][0]["games"][0]
+        self.assertEqual(
+            {key: daily_canonical[key] for key in ("game", "totalTime")},
+            fixture["dailyProjection"],
+        )
+        overall_canonical = next(
+            entry
+            for entry in overall
+            if entry["game"]["id"] == canonical_record["game"]["id"]
+        )
+        self.assertEqual(
+            {key: overall_canonical[key] for key in ("game", "totalTime")},
+            fixture["overallProjection"],
+        )
         canonical_dictionary = next(
-            entry for entry in dictionary if entry["game"]["id"] == "explicit-parent"
+            entry
+            for entry in dictionary
+            if entry["game"]["id"] == canonical_record["game"]["id"]
         )
         self.assertEqual(
-            [checksum["game"]["id"] for checksum in canonical_dictionary["files"]],
-            [
-                "checksum-leader",
-                "hidden-child",
-                "representative-child",
-                "representative-child",
-            ],
+            {
+                "game": canonical_dictionary["game"],
+                "fileGameIds": [
+                    checksum["game"]["id"] for checksum in canonical_dictionary["files"]
+                ],
+            },
+            fixture["dictionaryProjection"],
         )
 
         components = dao.get_game_identity_components()
         for game_id in (
-            "checksum-leader",
+            str(steam_alias),
             "representative-child",
             "hidden-child",
             "third-leader",

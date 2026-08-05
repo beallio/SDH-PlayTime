@@ -1,0 +1,49 @@
+{
+  "canonicalParent": {
+    "gameId": "explicit-parent",
+    "gameName": "Explicit Parent",
+    "recordedSeconds": 0
+  },
+  "canonicalRecord": {
+    "game": {
+      "id": "explicit-parent",
+      "name": "Explicit Parent"
+    },
+    "totalTime": 60,
+    "lastPlayedDate": "2025-01-01T12:00:00",
+    "aliasesId": "3245664592,hidden-child,representative-child,third-leader"
+  },
+  "aliases": [
+    "3245664592",
+    "hidden-child",
+    "representative-child",
+    "third-leader"
+  ],
+  "steamAlias": 3245664592,
+  "dailyProjection": {
+    "game": {
+      "id": "explicit-parent",
+      "name": "Explicit Parent"
+    },
+    "totalTime": 60
+  },
+  "overallProjection": {
+    "game": {
+      "id": "explicit-parent",
+      "name": "Explicit Parent"
+    },
+    "totalTime": 60
+  },
+  "dictionaryProjection": {
+    "game": {
+      "id": "explicit-parent",
+      "name": "Explicit Parent"
+    },
+    "fileGameIds": [
+      "3245664592",
+      "hidden-child",
+      "representative-child",
+      "representative-child"
+    ]
+  }
+}

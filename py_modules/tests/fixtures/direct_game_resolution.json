@@ -1,0 +1,22 @@
+{
+  "source": {
+    "kind": "local-protocol-fixture",
+    "reason": "Direct payload resolution has no launcher metadata source; it is proved from a bounded Steam shortcut and a regular local file."
+  },
+  "shortcut": {
+    "launcherKind": "direct",
+    "classificationStatus": "recognized",
+    "normalized": {
+      "flatpakAppId": null,
+      "shortcutExe": "\"{payload}\"",
+      "shortcutLaunchOptions": null,
+      "shortcutStartDir": null,
+      "executableTokens": ["{payload}"],
+      "launchOptionTokens": [],
+      "startDirTokens": [],
+      "commandTokens": ["{payload}"]
+    },
+    "metadataCandidates": []
+  },
+  "payloadRelativePath": "Direct/Direct Game.exe"
+}

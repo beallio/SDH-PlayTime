@@ -1,7 +1,30 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { Cache } from "@src/app/cache";
 import { APP_TYPE } from "@src/constants";
-import { SteamPlayTimePatches } from "@src/steam/ui/steamPlayTimePatches";
+import type { SteamPlayTimePatches as SteamPlayTimePatchesType } from "@src/steam/ui/steamPlayTimePatches";
+
+mock.module("@decky/api", () => ({
+	call: async () => undefined,
+	toaster: { toast: () => {} },
+	routerHook: { addPatch: () => {}, removePatch: () => {} },
+}));
+
+const gameParentProjection = (await Bun.file(
+	new URL("../../tests/fixtures/game-parent-projection.json", import.meta.url),
+).json()) as {
+	canonicalRecord: {
+		game: { id: string; name: string };
+		totalTime: number;
+		lastPlayedDate: string;
+		aliasesId: string;
+	};
+	steamAlias: number;
+};
+
+const { buildPlayTimeMap } = await import("@src/cachables");
+const { SteamPlayTimePatches } = await import(
+	"@src/steam/ui/steamPlayTimePatches"
+);
 
 type PlayTimeInformation = Map<
 	string,
@@ -53,7 +76,7 @@ class FakeCache implements Cache<PlayTimeInformation> {
 describe("SteamPlayTimePatches", () => {
 	let overallCache: FakeCache;
 	let twoWeekCache: FakeCache;
-	let patches: SteamPlayTimePatches;
+	let patches: SteamPlayTimePatchesType;
 
 	let appOverviews: Map<number, unknown>;
 
@@ -209,23 +232,19 @@ describe("SteamPlayTimePatches", () => {
 		patches = new SteamPlayTimePatches(overallCache, twoWeekCache, () => true);
 		patches.mount();
 
-		const overall = { time: 60, lastDate: 1735732800, isMerged: true };
-		const twoWeeks = { time: 30, lastDate: 1735732800, isMerged: true };
-		overallCache.data = new Map([
-			["explicit-parent", overall],
-			["123", overall],
-		]);
-		twoWeekCache.data = new Map([
-			["explicit-parent", twoWeeks],
-			["123", twoWeeks],
-		]);
+		const overall = buildPlayTimeMap([gameParentProjection.canonicalRecord]);
+		overallCache.data = overall;
+		twoWeekCache.data = new Map();
 
-		const app = createOverview(123, 1);
-		appStore.m_mapApps.set(123, app);
+		const app = createOverview(gameParentProjection.steamAlias, 1);
+		appStore.m_mapApps.set(gameParentProjection.steamAlias, app);
 
 		expect(app.minutes_playtime_forever).toBe("1.0");
-		expect(app.minutes_playtime_last_two_weeks).toBe(0.5);
+		expect(app.minutes_playtime_last_two_weeks).toBe(0);
 		expect(app.rt_last_time_played).toBe(1735732800);
+		expect(overall.get(String(gameParentProjection.steamAlias))).toBe(
+			overall.get(gameParentProjection.canonicalRecord.game.id),
+		);
 	});
 
 	test("disabled merged playtime preserves native steam overview", () => {
