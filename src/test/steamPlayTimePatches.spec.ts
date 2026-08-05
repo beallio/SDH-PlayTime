@@ -204,6 +204,30 @@ describe("SteamPlayTimePatches", () => {
 		expect(app.rt_last_time_played).toBe(5000);
 	});
 
+	test("patches a checksum child with its RPC-confirmed canonical parent", () => {
+		patches.unMount();
+		patches = new SteamPlayTimePatches(overallCache, twoWeekCache, () => true);
+		patches.mount();
+
+		const overall = { time: 60, lastDate: 1735732800, isMerged: true };
+		const twoWeeks = { time: 30, lastDate: 1735732800, isMerged: true };
+		overallCache.data = new Map([
+			["explicit-parent", overall],
+			["123", overall],
+		]);
+		twoWeekCache.data = new Map([
+			["explicit-parent", twoWeeks],
+			["123", twoWeeks],
+		]);
+
+		const app = createOverview(123, 1);
+		appStore.m_mapApps.set(123, app);
+
+		expect(app.minutes_playtime_forever).toBe("1.0");
+		expect(app.minutes_playtime_last_two_weeks).toBe(0.5);
+		expect(app.rt_last_time_played).toBe(1735732800);
+	});
+
 	test("disabled merged playtime preserves native steam overview", () => {
 		patches.mount();
 

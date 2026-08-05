@@ -51,6 +51,33 @@ describe("buildPlayTimeMap", () => {
 		expect(map.get("child3")).toBe(parentEntry);
 	});
 
+	it("keeps an RPC-confirmed zero-time parent canonical over checksum leaders", () => {
+		const map = buildPlayTimeMap([
+			{
+				game: { id: "explicit-parent" },
+				totalTime: 60,
+				lastPlayedDate: "2025-01-01T12:00:00Z",
+				aliasesId:
+					"checksum-leader,hidden-child,representative-child,third-leader",
+			},
+		]);
+
+		const parent = map.get("explicit-parent");
+		expect(parent).toEqual({
+			time: 60,
+			lastDate: 1735732800,
+			isMerged: true,
+		});
+		for (const childId of [
+			"checksum-leader",
+			"hidden-child",
+			"representative-child",
+			"third-leader",
+		]) {
+			expect(map.get(childId)).toBe(parent);
+		}
+	});
+
 	it("covers whitespace and empty alias tokens so malformed separators do not create empty cache keys", () => {
 		const records = [
 			{
