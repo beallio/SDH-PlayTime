@@ -37,13 +37,8 @@ class Statistics:
         if not game_id:
             return None
 
-        if not self.association_manager:
-            return [game_id]
-
-        children = self.dao.get_children_of_parent(game_id)
-        if children:
-            return [game_id] + children
-        return [game_id]
+        component = self.dao.get_game_identity_components().get(game_id)
+        return list(component.members) if component else [game_id]
 
     def combine_games_by_association(self, games_data: List[Any]) -> List[Any]:
         if not self.association_manager:
@@ -362,47 +357,61 @@ class Statistics:
     def combine_games_by_checksum_per_day(
         self, days: List[DayStatistics]
     ) -> List[DayStatistics]:
-        """
-        Combines games played on the same day that share the same file checksum.
-        This version is slightly cleaner and adds comments on its assumptions.
-        """
+        return self._combine_games_by_identity_per_day(
+            days, self.dao.get_game_identity_components()
+        )
+
+    def _combine_games_by_identity_per_day(
+        self, days: List[DayStatistics], components
+    ) -> List[DayStatistics]:
+        """Combine each day's reports using the shared canonical component map."""
         result_days = []
+        game_names_by_id = {
+            game.id: game.name for game in self.dao.get_games_dictionary()
+        }
 
         for day in days:
-            # Group games by checksum for the current day
-            checksum_to_games: Dict[Optional[str], List[GamePlaytimeDetails]] = {}
+            games_by_canonical_id: Dict[str, List[GamePlaytimeDetails]] = {}
             for gwt in day.games:
-                # Assumption: The checksum of the first session is representative
-                # for the purpose of grouping. Handle cases with no sessions.
-                checksum = gwt.sessions[0].checksum if gwt.sessions else None
-                if checksum not in checksum_to_games:
-                    checksum_to_games[checksum] = []
-                checksum_to_games[checksum].append(gwt)
+                component = components.get(gwt.game.id)
+                canonical_id = component.canonical_id if component else gwt.game.id
+                games_by_canonical_id.setdefault(canonical_id, []).append(gwt)
 
             merged_games: List[GamePlaytimeDetails] = []
-            for checksum, game_group in checksum_to_games.items():
-                # If checksum is None or only one game has it, no merging is needed
-                if checksum is None or len(game_group) == 1:
-                    merged_games.extend(game_group)
-                    continue
-
-                # Merge multiple games with the same checksum
-                # Assumption: The game identity (name, id) of the first game in the
-                # group is used for the merged entry.
-                representative_game = game_group[0]
-
-                total_time = sum(g.total_time for g in game_group)
-
+            for canonical_id in sorted(games_by_canonical_id):
+                game_group = games_by_canonical_id[canonical_id]
+                canonical_game = next(
+                    (game.game for game in game_group if game.game.id == canonical_id),
+                    None,
+                )
+                if canonical_game is None:
+                    canonical_name = game_names_by_id.get(canonical_id)
+                    if canonical_name is not None:
+                        canonical_game = Game(
+                            canonical_id, canonical_name or "Unknown Game"
+                        )
+                    else:
+                        canonical_game = min(
+                            game_group, key=lambda game: game.game.id
+                        ).game
                 all_sessions = [s for g in game_group for s in g.sessions]
-                all_sessions.sort(key=lambda s: s.date, reverse=True)
+                if len(game_group) > 1:
+                    all_sessions.sort(key=lambda s: s.date, reverse=True)
+                last_sessions: List[SessionInformation] = []
+                for game in game_group:
+                    if game.last_session is not None:
+                        last_sessions.append(game.last_session)
 
                 merged_games.append(
                     GamePlaytimeDetails(
-                        game=representative_game.game,
-                        total_time=total_time,
+                        game=canonical_game,
+                        total_time=sum(game.total_time for game in game_group),
                         sessions=all_sessions,
-                        # Last session is kept from the representative game
-                        last_session=representative_game.last_session,
+                        last_session=(
+                            max(last_sessions, key=lambda session: session.date)
+                            if last_sessions
+                            else None
+                        ),
                     )
                 )
 
@@ -483,8 +492,8 @@ class Statistics:
                 DayStatistics(date=date_str, games=day_games, total=total_day_time)
             )
 
-        combined_days = self.combine_games_by_checksum_per_day(result_days)
-        return self._apply_associations_to_daily_statistics(combined_days)
+        components = self.dao.get_game_identity_components()
+        return self._combine_games_by_identity_per_day(result_days, components)
 
     def daily_statistics_for_period(
         self, start: date, end: date, game_id: Optional[str] = None
@@ -548,8 +557,6 @@ class Statistics:
             two_weeks_ago_start, two_weeks_ago_end
         )
 
-        information_list = self._apply_associations_to_playtime_info(information_list)
-
         visibility_map = {}
         if self.tracking_manager:
             game_ids = [info.game_id for info in information_list]
@@ -575,8 +582,6 @@ class Statistics:
     def fetch_playtime_information(self) -> List[dict[str, GamePlaytimeReport]]:
         information_list = self.dao.fetch_playtime_information()
 
-        information_list = self._apply_associations_to_playtime_info(information_list)
-
         visibility_map = {}
         if self.tracking_manager:
             game_ids = [info.game_id for info in information_list]
@@ -601,40 +606,29 @@ class Statistics:
 
     def per_game_overall_statistic(self) -> List[Dict[str, Any]]:
         """
-        Returns overall statistics per game, grouped by checksum (or game_id if checksum is missing).
+        Returns overall statistics grouped by the canonical game identity component.
         Filters out games based on tracking status (hidden/ignore are excluded).
-        Applies game associations: child games are merged into parent games.
         """
         data = self.dao.fetch_overall_playtime()
         all_sessions = self.dao.fetch_all_game_sessions_report()
+        components = self.dao.get_game_identity_components()
+        game_names_by_id = {
+            game.id: game.name for game in self.dao.get_games_dictionary()
+        }
 
-        all_associations = self.dao.get_all_game_associations()
-        parent_to_children: Dict[str, List[str]] = {}
-        child_to_parent: Dict[str, str] = {}
-
-        for assoc in all_associations:
-            parent_id = assoc["parent_game_id"]
-            child_id = assoc["child_game_id"]
-            child_to_parent[child_id] = parent_id
-            if parent_id not in parent_to_children:
-                parent_to_children[parent_id] = []
-            parent_to_children[parent_id].append(child_id)
-
-        games_by_key: Dict[str, List[GameTimeDto]] = {}
+        games_by_canonical_id: Dict[str, List[GameTimeDto]] = {}
 
         for game_stat in data:
-            key = game_stat.checksum or game_stat.game_id
-            if key not in games_by_key:
-                games_by_key[key] = []
-            games_by_key[key].append(game_stat)
+            component = components.get(game_stat.game_id)
+            canonical_id = component.canonical_id if component else game_stat.game_id
+            games_by_canonical_id.setdefault(canonical_id, []).append(game_stat)
 
-        sessions_by_key: Dict[str, List[SessionInformation]] = {}
+        sessions_by_canonical_id: Dict[str, List[SessionInformation]] = {}
 
         for game_id, session in all_sessions:
-            key = session.checksum or game_id
-            if key not in sessions_by_key:
-                sessions_by_key[key] = []
-            sessions_by_key[key].append(
+            component = components.get(game_id)
+            canonical_id = component.canonical_id if component else game_id
+            sessions_by_canonical_id.setdefault(canonical_id, []).append(
                 SessionInformation(
                     date=session.date,
                     duration=session.duration,
@@ -643,53 +637,52 @@ class Statistics:
                 )
             )
 
-        # Get last session per group
-        last_sessions_by_key = self.get_last_sessions_from_grouped_sessions(
-            sessions_by_key
-        )
-
         visibility_map = {}
         if self.tracking_manager:
-            game_ids = [game_stats[0].game_id for game_stats in games_by_key.values()]
+            game_ids = list(games_by_canonical_id)
             visibility_map = self.tracking_manager.get_bulk_visibility(game_ids)
 
-        # Build intermediate results by game_id using GamePlaytimeDetails
-        results_by_game_id: Dict[str, GamePlaytimeDetails] = {}
-
-        for key, game_stats in games_by_key.items():
-            game_id = game_stats[0].game_id
-
-            # Filter based on tracking status if tracking_manager is available
-            if self.tracking_manager and not visibility_map.get(game_id, True):
+        results = []
+        for canonical_id, game_stats in games_by_canonical_id.items():
+            if self.tracking_manager and not visibility_map.get(canonical_id, True):
                 continue
 
-            results_by_game_id[game_id] = GamePlaytimeDetails(
-                game=Game(game_id, game_stats[0].game_name),
-                total_time=sum(g.time for g in game_stats),
-                sessions=sessions_by_key.get(key, []),
-                last_session=(
-                    last_sessions_by_key.get(key) or last_sessions_by_key.get(game_id)
+            canonical_game_stat = next(
+                (
+                    game_stat
+                    for game_stat in game_stats
+                    if game_stat.game_id == canonical_id
                 ),
+                None,
             )
-
-        # Apply associations: merge children into parents, remove child games
-        final_results = []
-
-        for game_id, game_details in results_by_game_id.items():
-            # Skip child games (will be merged into parent)
-            if game_id in child_to_parent:
-                continue
-
-            # If this is a parent, merge children's data
-            if game_id in parent_to_children:
-                merged_details = self._merge_game_details(
-                    game_details, parent_to_children[game_id], results_by_game_id
+            canonical_game_info = self.dao.get_game(canonical_id)
+            if canonical_game_stat:
+                game = Game(canonical_game_stat.game_id, canonical_game_stat.game_name)
+            elif canonical_game_info:
+                game = Game(canonical_game_info.game_id, canonical_game_info.name)
+            elif canonical_id in game_names_by_id:
+                game = Game(
+                    canonical_id,
+                    game_names_by_id[canonical_id] or "Unknown Game",
                 )
-                final_results.append(merged_details.to_dict())
             else:
-                final_results.append(game_details.to_dict())
+                fallback = min(game_stats, key=lambda game_stat: game_stat.game_id)
+                game = Game(canonical_id, fallback.game_name)
 
-        return final_results
+            sessions = sessions_by_canonical_id.get(canonical_id, [])
+            results.append(
+                GamePlaytimeDetails(
+                    game=game,
+                    total_time=sum(game_stat.time for game_stat in game_stats),
+                    sessions=sessions,
+                    last_session=(
+                        max(sessions, key=lambda session: session.date)
+                        if sessions
+                        else None
+                    ),
+                ).to_dict()
+            )
+        return results
 
     def _merge_game_details(
         self,

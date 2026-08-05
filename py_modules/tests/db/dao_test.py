@@ -14,6 +14,66 @@ class TestDao(AbstractDatabaseTest):
         DbMigration(db=self.database).migrate()
         self.dao = Dao(db=self.database)
 
+    def test_identity_components_select_an_explicit_parent_across_a_transitive_checksum_family(
+        self,
+    ):
+        for game_id, name in [
+            ("checksum-leader", "Checksum Leader"),
+            ("bridge", "Bridge"),
+            ("child", "Child"),
+            ("explicit-parent", "Explicit Parent"),
+        ]:
+            self.dao.save_game_dict(game_id, name)
+
+        self.dao.save_play_time(datetime(2025, 1, 1, 10, 0), 30, "checksum-leader")
+        self.dao.save_play_time(datetime(2025, 1, 2, 10, 0), 70, "child")
+        for game_id, checksum in [
+            ("checksum-leader", "left"),
+            ("bridge", "left"),
+            ("bridge", "right"),
+            ("child", "right"),
+        ]:
+            self.dao.save_game_checksum(game_id, checksum, "SHA256", 1, None, None)
+        self.dao.create_game_association("explicit-parent", "child")
+
+        all_time = self.dao.fetch_playtime_information()
+        period = self.dao.fetch_playtime_information_for_period(
+            datetime(2025, 1, 1), datetime(2025, 1, 3)
+        )
+
+        expected_aliases = "bridge,checksum-leader,child"
+        self.assertEqual(len(all_time), 1)
+        self.assertEqual(all_time[0].game_id, "explicit-parent")
+        self.assertEqual(all_time[0].game_name, "Explicit Parent")
+        self.assertEqual(all_time[0].total_time, 100)
+        self.assertEqual(all_time[0].aliases_id, expected_aliases)
+        self.assertEqual(len(period), 1)
+        self.assertEqual(period[0].game_id, "explicit-parent")
+        self.assertEqual(period[0].total_time, 100)
+        self.assertEqual(period[0].aliases_id, expected_aliases)
+
+    def test_conflicting_explicit_parents_use_a_fallback_without_writing_associations(
+        self,
+    ):
+        for game_id in ["alpha", "beta", "parent-a", "parent-b"]:
+            self.dao.save_game_dict(game_id, game_id)
+        for game_id in ["alpha", "beta"]:
+            self.dao.save_game_checksum(game_id, "shared", "SHA256", 1, None, None)
+        self.dao.create_game_association("parent-a", "alpha")
+        self.dao.create_game_association("parent-b", "beta")
+        before = self.dao.get_all_game_associations()
+
+        components = self.dao.get_game_identity_components()
+        report = self.dao.fetch_playtime_information()
+
+        component = components["parent-a"]
+        self.assertEqual(component.status, "conflict")
+        self.assertEqual(component.canonical_id, "alpha")
+        self.assertEqual(component.explicit_parent_ids, ("parent-a", "parent-b"))
+        self.assertEqual(report[0].game_id, "alpha")
+        self.assertEqual(report[0].aliases_id, "beta,parent-a,parent-b")
+        self.assertEqual(self.dao.get_all_game_associations(), before)
+
     def test_should_save_game_dict_only_once(self):
         self.dao.save_game_dict("1001", "Zelda BOTW")
         self.dao.save_game_dict("1001", "Zelda BOTW - updated")

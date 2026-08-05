@@ -754,8 +754,8 @@ class TestPlayTime(AbstractDatabaseTest):
                             },
                             "last_session": {
                                 "checksum": "a3976a0553ba444ac96074ee2330a38a6b635e70a0c2a7ac2d0b568765ce2a0a",
-                                "date": "2025-01-02T01:30:00",
-                                "duration": 900,
+                                "date": "2025-01-04T21:48:13.255000",
+                                "duration": 3600,
                                 "migrated": None,
                             },
                             "sessions": [
@@ -782,7 +782,7 @@ class TestPlayTime(AbstractDatabaseTest):
                     "games": [
                         {
                             "game": {
-                                "id": "3908342731",
+                                "id": "3393530879",
                                 "name": "Monster Hunter 4 Ultimate",
                             },
                             "last_session": {
@@ -827,7 +827,7 @@ class TestPlayTime(AbstractDatabaseTest):
                         },
                         {
                             "game": {
-                                "id": "3908342731",
+                                "id": "3393530879",
                                 "name": "Monster Hunter 4 Ultimate",
                             },
                             "last_session": {

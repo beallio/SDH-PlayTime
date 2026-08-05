@@ -617,8 +617,8 @@ class TestGetGameWithAssociations(AbstractDatabaseTest):
         # Total should be 3600 + 1800 + 900 = 6300
         self.assertEqual(result.total_time, 6300)
 
-    def test_get_by_id_child_game_returns_own_playtime(self):
-        """Test that get_by_id for a child game returns only its own playtime."""
+    def test_get_by_id_child_game_returns_the_canonical_component_playtime(self):
+        """A child lookup resolves to its explicit parent's canonical component."""
         from py_modules.games import Games
 
         self._create_game("parent_game", "Parent Game", 3600)
@@ -630,8 +630,8 @@ class TestGetGameWithAssociations(AbstractDatabaseTest):
         result = games.get_by_id("child_game")
 
         self.assertIsNotNone(result)
-        # Child should return its own playtime
-        self.assertEqual(result.total_time, 1800)
+        self.assertEqual(result.game.id, "parent_game")
+        self.assertEqual(result.total_time, 5400)
 
 
 class TestDailyStatisticsForSpecificGame(AbstractDatabaseTest):
@@ -950,12 +950,12 @@ class TestPlaytimeInformationWithAssociations(AbstractDatabaseTest):
 
         parent_result = next(r for r in result if r["game"]["id"] == "parent_game")
 
-        # Child time is summed exactly once, only the 1800 from within two weeks
+        # Child time is summed exactly once, only the 1800 from within two weeks.
         self.assertEqual(parent_result["total_time"], 1800)
 
         aliases = parent_result["aliases_id"].split(",")
         self.assertIn("child_1", aliases)
-        self.assertNotIn("child_2", aliases)
+        self.assertIn("child_2", aliases)
 
 
 if __name__ == "__main__":

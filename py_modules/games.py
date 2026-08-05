@@ -1,5 +1,5 @@
 from py_modules.db.dao import Dao
-from typing import Dict, List, Set
+from typing import Dict, List
 from py_modules.schemas.common import Game
 from py_modules.schemas.response import (
     FileChecksum,
@@ -17,53 +17,55 @@ class Games:
         self.dao = dao
         self.association_manager = association_manager
 
-    def _get_child_game_ids(self) -> Set[str]:
-        if not self.association_manager:
-            return set()
-
-        all_associations = self.dao.get_all_game_associations()
-        return {assoc["child_game_id"] for assoc in all_associations}
-
-    def _get_children_for_game(self, game_id: str) -> List[str]:
-        if not self.association_manager:
-            return []
-
-        return self.dao.get_children_of_parent(game_id)
-
     def get_by_id(self, game_id: str) -> GamePlaytimeSummary | None:
-        response = self.dao.get_game(game_id)
+        components = self.dao.get_game_identity_components()
+        component = components.get(game_id)
+        canonical_id = component.canonical_id if component else game_id
+        response = self.dao.get_game(canonical_id)
 
         if response is None:
-            return None
+            dictionary_game = next(
+                (
+                    game
+                    for game in self.dao.get_games_dictionary()
+                    if game.id == canonical_id
+                ),
+                None,
+            )
+            if dictionary_game is None:
+                return None
+            canonical_game = Game(dictionary_game.id, dictionary_game.name)
+        else:
+            canonical_game = Game(response.game_id, response.name)
 
-        total_time = response.time
-
-        if self.association_manager:
-            children_ids = self._get_children_for_game(game_id)
-            for child_id in children_ids:
-                child_response = self.dao.get_game(child_id)
-                if child_response:
-                    total_time += child_response.time
-
-        return GamePlaytimeSummary(
-            Game(response.game_id, response.name), total_time=total_time
+        member_ids = component.members if component else (game_id,)
+        total_time = sum(
+            game.time
+            for member_id in member_ids
+            if (game := self.dao.get_game(member_id)) is not None
         )
+
+        return GamePlaytimeSummary(canonical_game, total_time=total_time)
 
     def get_dictionary(self) -> List[Dict[str, GameDictionary]]:
         data = self.dao.get_games_dictionary()
-
-        child_game_ids = self._get_child_game_ids()
+        components = self.dao.get_game_identity_components()
 
         result: List[Dict[str, GameDictionary]] = []
 
-        for game in data:
-            if game.id in child_game_ids:
+        for game in sorted(data, key=lambda item: item.id):
+            component = components.get(game.id)
+            if component and component.canonical_id != game.id:
                 continue
 
-            game_files_checksum = self.dao.get_game_files_checksum(game.id)
+            member_ids = component.members if component else (game.id,)
+            game_files_checksum = [
+                checksum
+                for member_id in member_ids
+                for checksum in self.dao.get_game_files_checksum(member_id)
+            ]
 
-            # Use generator expression to avoid building intermediate list
-            file_checksums = (
+            file_checksums = [
                 FileChecksum(
                     Game(gfc.game_id, gfc.game_name),
                     gfc.checksum,
@@ -73,12 +75,17 @@ class Games:
                     gfc.updated_at,
                 )
                 for gfc in game_files_checksum
+            ]
+            file_checksums.sort(
+                key=lambda checksum: (
+                    checksum.game.id,
+                    checksum.checksum,
+                    checksum.algorithm,
+                )
             )
 
             result.append(
-                GameDictionary(
-                    Game(game.id, game.name), files=list(file_checksums)
-                ).to_dict()
+                GameDictionary(Game(game.id, game.name), files=file_checksums).to_dict()
             )
 
         return result
@@ -127,11 +134,8 @@ class Games:
 
     def get_games_checksum(self):
         games_checksum_without_game_dict = self.dao.get_games_checksum()
-
-        child_game_ids = self._get_child_game_ids()
-
-        # TODO: Add test case to check if name is correct
-        return [
+        components = self.dao.get_game_identity_components()
+        checksums = [
             FileChecksum(
                 Game(
                     game.game_id,
@@ -144,8 +148,15 @@ class Games:
                 game.updated_at,
             ).to_dict()
             for game in games_checksum_without_game_dict
-            if game.game_id not in child_game_ids
         ]
+
+        def checksum_sort_key(checksum):
+            game_id = checksum["game"]["id"]
+            component = components.get(game_id)
+            canonical_id = component.canonical_id if component else game_id
+            return canonical_id, game_id, checksum["checksum"], checksum["algorithm"]
+
+        return sorted(checksums, key=checksum_sort_key)
 
     def link_game_to_game_with_checksum(self, child_game_id: str, parent_game_id: str):
         parent_game = self.dao.get_game(parent_game_id)
