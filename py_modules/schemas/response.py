@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Literal
 from .common import ChecksumAlgorithm, Game
 
 
@@ -117,3 +117,85 @@ class GameDictionary:
             "game": {"id": self.game.id, "name": self.game.name},
             "files": [f.to_dict() for f in self.files],
         }
+
+
+@dataclass(slots=True)
+class AssociationComponentError(Exception):
+    code: str
+    message: str
+
+    def to_dict(self) -> Dict[str, str]:
+        return {"code": self.code, "message": self.message}
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationComponentSnapshot:
+    anchor_game_id: str
+    expected_parent_game_id: str | None
+    existing_members: tuple[Game, ...]
+    fingerprint: str
+    status: Literal["confirmed", "unconfirmed", "conflict"]
+    aliases: tuple[str, ...]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "anchor_game_id": self.anchor_game_id,
+            "expected_parent_game_id": self.expected_parent_game_id,
+            "existing_members": [
+                {"game_id": member.id, "game_name": member.name}
+                for member in self.existing_members
+            ],
+            "fingerprint": self.fingerprint,
+            "status": self.status,
+            "aliases": list(self.aliases),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationComponentConfirmation:
+    anchor_game_id: str
+    proposed_parent: Game
+    expected_parent_game_id: str | None
+    existing_members: tuple[Game, ...]
+    fingerprint: str
+    selected_members: tuple[Game, ...]
+    confirmed_parent: Game
+    status: Literal["confirmed"]
+    aliases: tuple[str, ...]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "anchor_game_id": self.anchor_game_id,
+            "proposed_parent": {
+                "game_id": self.proposed_parent.id,
+                "game_name": self.proposed_parent.name,
+            },
+            "expected_parent_game_id": self.expected_parent_game_id,
+            "existing_members": [
+                {"game_id": member.id, "game_name": member.name}
+                for member in self.existing_members
+            ],
+            "fingerprint": self.fingerprint,
+            "selected_members": [
+                {"game_id": member.id, "game_name": member.name}
+                for member in self.selected_members
+            ],
+            "confirmed_parent": {
+                "game_id": self.confirmed_parent.id,
+                "game_name": self.confirmed_parent.name,
+            },
+            "status": self.status,
+            "aliases": list(self.aliases),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationComponentReadOutcome:
+    snapshot: AssociationComponentSnapshot | None
+    error: AssociationComponentError | None
+
+
+@dataclass(frozen=True, slots=True)
+class AssociationComponentConfirmationOutcome:
+    confirmation: AssociationComponentConfirmation | None
+    error: AssociationComponentError | None

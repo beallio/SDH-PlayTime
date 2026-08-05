@@ -491,6 +491,128 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
             "Time should not increase - second session should be blocked",
         )
 
+    async def test_association_component_rpcs_return_the_grouped_confirmation_dto(self):
+        plugin = self.main.Plugin()
+        await plugin._main()
+        await plugin.set_current_user("76561198077777777")
+        dao = plugin.association_manager.dao
+        for game_id, name in [
+            ("alpha", "Alpha"),
+            ("beta", "Beta"),
+            ("gamma", "Gamma"),
+        ]:
+            dao.save_game_dict(game_id, name)
+            dao.save_game_checksum(game_id, "shared", "SHA256", 1, None, None)
+        dao.create_game_association("alpha", "beta")
+        dao.create_game_association("alpha", "gamma")
+
+        read_result = await plugin.get_game_association_component("gamma")
+
+        self.assertEqual(
+            read_result,
+            {
+                "success": True,
+                "data": {
+                    "anchorGameId": "gamma",
+                    "expectedParentGameId": "alpha",
+                    "existingMembers": [
+                        {"gameId": "alpha", "gameName": "Alpha"},
+                        {"gameId": "beta", "gameName": "Beta"},
+                        {"gameId": "gamma", "gameName": "Gamma"},
+                    ],
+                    "fingerprint": dao.game_association_component_fingerprint(
+                        ("alpha", "beta", "gamma")
+                    ),
+                    "status": "confirmed",
+                    "aliases": ["beta", "gamma"],
+                },
+            },
+        )
+
+        confirmation_result = await plugin.confirm_game_association_component(
+            {
+                "anchor_game_id": "gamma",
+                "proposed_parent_game_id": "beta",
+                "proposed_parent_game_name": "Beta",
+                "expected_parent_game_id": "alpha",
+                "expected_fingerprint": read_result["data"]["fingerprint"],
+                "selected_members": [
+                    {"game_id": "alpha", "game_name": "Alpha"},
+                    {"game_id": "beta", "game_name": "Beta"},
+                    {"game_id": "gamma", "game_name": "Gamma"},
+                ],
+            }
+        )
+
+        self.assertEqual(confirmation_result["success"], True)
+        self.assertEqual(
+            confirmation_result["data"]["proposedParent"],
+            {"gameId": "beta", "gameName": "Beta"},
+        )
+        self.assertEqual(
+            confirmation_result["data"]["confirmedParent"],
+            {"gameId": "beta", "gameName": "Beta"},
+        )
+        self.assertEqual(confirmation_result["data"]["status"], "confirmed")
+        self.assertEqual(confirmation_result["data"]["aliases"], ["alpha", "gamma"])
+
+    async def test_association_component_confirmation_rejects_malformed_input(self):
+        plugin = self.main.Plugin()
+        await plugin._main()
+        await plugin.set_current_user("76561198088888888")
+
+        result = await plugin.confirm_game_association_component(None)
+
+        self.assertEqual(result["success"], False)
+        self.assertEqual(result["error"]["code"], "INVALID_REQUEST")
+
+    async def test_association_component_confirmation_propagates_structured_errors(
+        self,
+    ):
+        from py_modules.schemas.response import (
+            AssociationComponentConfirmationOutcome,
+            AssociationComponentError,
+        )
+
+        plugin = self.main.Plugin()
+        await plugin._main()
+        await plugin.set_current_user("76561198099999998")
+        request = {
+            "anchor_game_id": "alpha",
+            "proposed_parent_game_id": "alpha",
+            "proposed_parent_game_name": "Alpha",
+            "expected_parent_game_id": None,
+            "expected_fingerprint": "fingerprint",
+            "selected_members": [{"game_id": "alpha", "game_name": "Alpha"}],
+        }
+        for code in (
+            "ANCHOR_NOT_FOUND",
+            "STALE_COMPONENT",
+            "UNEXPECTED_MEMBER",
+            "INCOMPLETE_MEMBER_SELECTION",
+            "PARENT_NOT_MEMBER",
+            "COMPONENT_CONFLICT",
+            "INVALID_SELECTION",
+            "ASSOCIATION_UPDATE_FAILED",
+        ):
+            with patch.object(
+                type(plugin.association_manager),
+                "confirm_association_component",
+                return_value=AssociationComponentConfirmationOutcome(
+                    confirmation=None,
+                    error=AssociationComponentError(code=code, message="structured"),
+                ),
+            ):
+                result = await plugin.confirm_game_association_component(request)
+
+            self.assertEqual(
+                result,
+                {
+                    "success": False,
+                    "error": {"code": code, "message": "structured"},
+                },
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import datetime
+from hashlib import sha256
 import sqlite3
 from typing import Tuple, List, Dict, Optional, Collection
 
@@ -9,8 +10,14 @@ from py_modules.game_identity import (
     build_game_identity_components,
     canonical_game_name,
 )
-from py_modules.schemas.common import ChecksumAlgorithm
-from py_modules.schemas.response import SessionInformation
+from py_modules.schemas.common import ChecksumAlgorithm, Game
+from py_modules.schemas.request import AssociationComponentConfirmationRequest
+from py_modules.schemas.response import (
+    AssociationComponentConfirmation,
+    AssociationComponentError,
+    AssociationComponentSnapshot,
+    SessionInformation,
+)
 
 
 @dataclass(slots=True)
@@ -400,6 +407,180 @@ class Dao:
             checksum_records,
             association_records,
         )
+
+    @staticmethod
+    def game_association_component_fingerprint(member_ids: Collection[str]) -> str:
+        """Return a stable optimistic-concurrency token for sorted member IDs."""
+
+        return sha256("\x1f".join(sorted(set(member_ids))).encode()).hexdigest()
+
+    def get_game_association_component(
+        self, anchor_game_id: str
+    ) -> AssociationComponentSnapshot:
+        with self._db.transactional() as connection:
+            return self._get_game_association_component(connection, anchor_game_id)
+
+    def _get_game_association_component(
+        self,
+        connection: sqlite3.Connection,
+        anchor_game_id: str,
+    ) -> AssociationComponentSnapshot:
+        components = self._get_game_identity_components(connection)
+        component = components.get(anchor_game_id)
+        if component is None:
+            raise AssociationComponentError(
+                code="ANCHOR_NOT_FOUND",
+                message="The association component anchor no longer exists.",
+            )
+
+        members = component.members
+        placeholders = ", ".join("?" for _ in members)
+        names_by_game_id = dict(
+            connection.execute(
+                f"SELECT game_id, name FROM game_dict WHERE game_id IN ({placeholders})",
+                members,
+            ).fetchall()
+        )
+        existing_members = tuple(
+            Game(game_id, names_by_game_id.get(game_id) or "Unknown Game")
+            for game_id in members
+        )
+        expected_parent_game_id = (
+            component.canonical_id if component.status == "confirmed" else None
+        )
+        return AssociationComponentSnapshot(
+            anchor_game_id=anchor_game_id,
+            expected_parent_game_id=expected_parent_game_id,
+            existing_members=existing_members,
+            fingerprint=self.game_association_component_fingerprint(members),
+            status=component.status,
+            aliases=component.aliases,
+        )
+
+    def confirm_game_association_component(
+        self, request: AssociationComponentConfirmationRequest
+    ) -> AssociationComponentConfirmation:
+        """Atomically confirm a complete logical-game component's explicit star."""
+
+        try:
+            with self._db.transactional() as connection:
+                snapshot = self._get_game_association_component(
+                    connection, request.anchor_game_id
+                )
+                component_member_ids = tuple(
+                    member.id for member in snapshot.existing_members
+                )
+                selected_by_game_id = {
+                    member.game_id: member for member in request.selected_members
+                }
+                selected_member_ids = tuple(sorted(selected_by_game_id))
+
+                if len(selected_by_game_id) != len(request.selected_members):
+                    raise AssociationComponentError(
+                        code="INVALID_SELECTION",
+                        message="Selected members must not contain duplicate game IDs.",
+                    )
+                if request.expected_fingerprint != snapshot.fingerprint:
+                    raise AssociationComponentError(
+                        code="STALE_COMPONENT",
+                        message="The association component changed before it was confirmed.",
+                    )
+                if request.expected_parent_game_id != snapshot.expected_parent_game_id:
+                    raise AssociationComponentError(
+                        code="STALE_COMPONENT",
+                        message="The association component parent changed before confirmation.",
+                    )
+                unexpected_members = set(selected_member_ids) - set(
+                    component_member_ids
+                )
+                missing_members = set(component_member_ids) - set(selected_member_ids)
+                if unexpected_members:
+                    raise AssociationComponentError(
+                        code="UNEXPECTED_MEMBER",
+                        message="Selected members must belong to the anchored component.",
+                    )
+                if snapshot.status == "conflict" and missing_members:
+                    raise AssociationComponentError(
+                        code="COMPONENT_CONFLICT",
+                        message="Conflicted components require confirmation of every member.",
+                    )
+                if missing_members:
+                    raise AssociationComponentError(
+                        code="INCOMPLETE_MEMBER_SELECTION",
+                        message="Confirmation must include every component member.",
+                    )
+                if request.proposed_parent_game_id not in selected_by_game_id:
+                    raise AssociationComponentError(
+                        code="PARENT_NOT_MEMBER",
+                        message="The proposed parent must be a selected component member.",
+                    )
+
+                selected_parent = selected_by_game_id[request.proposed_parent_game_id]
+                if selected_parent.game_name != request.proposed_parent_game_name:
+                    raise AssociationComponentError(
+                        code="INVALID_SELECTION",
+                        message="The proposed parent name must match the selected member.",
+                    )
+
+                selected_members = tuple(
+                    selected_by_game_id[game_id] for game_id in component_member_ids
+                )
+                for member in selected_members:
+                    self._save_game_dict(connection, member.game_id, member.game_name)
+
+                if not (
+                    snapshot.status == "confirmed"
+                    and snapshot.expected_parent_game_id
+                    == request.proposed_parent_game_id
+                ):
+                    placeholders = ", ".join("?" for _ in component_member_ids)
+                    connection.execute(
+                        f"""
+                        DELETE FROM game_association
+                        WHERE parent_game_id IN ({placeholders})
+                           OR child_game_id IN ({placeholders})
+                        """,
+                        component_member_ids + component_member_ids,
+                    )
+                    for child_game_id in component_member_ids:
+                        if child_game_id != request.proposed_parent_game_id:
+                            self._create_game_association(
+                                connection,
+                                request.proposed_parent_game_id,
+                                child_game_id,
+                            )
+
+                return AssociationComponentConfirmation(
+                    anchor_game_id=request.anchor_game_id,
+                    proposed_parent=Game(
+                        request.proposed_parent_game_id,
+                        request.proposed_parent_game_name,
+                    ),
+                    expected_parent_game_id=request.expected_parent_game_id,
+                    existing_members=snapshot.existing_members,
+                    fingerprint=snapshot.fingerprint,
+                    selected_members=tuple(
+                        Game(member.game_id, member.game_name)
+                        for member in selected_members
+                    ),
+                    confirmed_parent=Game(
+                        request.proposed_parent_game_id,
+                        request.proposed_parent_game_name,
+                    ),
+                    status="confirmed",
+                    aliases=tuple(
+                        game_id
+                        for game_id in component_member_ids
+                        if game_id != request.proposed_parent_game_id
+                    ),
+                )
+        except AssociationComponentError:
+            raise
+        except Exception as error:
+            raise AssociationComponentError(
+                code="ASSOCIATION_UPDATE_FAILED",
+                message="The association component could not be confirmed.",
+            ) from error
 
     @staticmethod
     def _component_aliases(component: GameIdentityComponent) -> str | None:
@@ -1248,6 +1429,47 @@ class Dao:
     def remove_game_association(self, child_game_id: str) -> None:
         with self._db.transactional() as connection:
             self._remove_game_association(connection, child_game_id)
+
+    def detach_game_association_member(self, child_game_id: str) -> None:
+        """Detach one child while retaining all playtime and game records."""
+
+        with self._db.transactional() as connection:
+            self._get_game_association_component(connection, child_game_id)
+            if self._is_game_a_parent(connection, child_game_id):
+                raise AssociationComponentError(
+                    code="PARENT_REQUIRES_CONFIRMATION",
+                    message=(
+                        "Removing a parent requires a replacement confirmation or "
+                        "explicit dissolution."
+                    ),
+                )
+            if not self._is_game_a_child(connection, child_game_id):
+                raise AssociationComponentError(
+                    code="NOT_A_CHILD",
+                    message=f"Game '{child_game_id}' is not associated with any parent.",
+                )
+            self._remove_game_association(connection, child_game_id)
+
+    def dissolve_game_association_component(self, anchor_game_id: str) -> None:
+        """Delete all explicit edges in one component without deleting history."""
+
+        with self._db.transactional() as connection:
+            snapshot = self._get_game_association_component(connection, anchor_game_id)
+            member_ids = tuple(member.id for member in snapshot.existing_members)
+            placeholders = ", ".join("?" for _ in member_ids)
+            result = connection.execute(
+                f"""
+                DELETE FROM game_association
+                WHERE parent_game_id IN ({placeholders})
+                   OR child_game_id IN ({placeholders})
+                """,
+                member_ids + member_ids,
+            )
+            if result.rowcount == 0:
+                raise AssociationComponentError(
+                    code="NOT_ASSOCIATED",
+                    message="The association component has no explicit edges to dissolve.",
+                )
 
     def _remove_game_association(
         self,

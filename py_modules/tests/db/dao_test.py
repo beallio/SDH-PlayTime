@@ -1,8 +1,15 @@
 import sqlite3
 from contextlib import closing
 from datetime import datetime
+from unittest.mock import patch
+
 from py_modules.db.dao import Dao
 from py_modules.db.migration import DbMigration
+from py_modules.schemas.request import (
+    AssociationComponentConfirmationRequest,
+    AssociationComponentMember,
+)
+from py_modules.schemas.response import AssociationComponentError
 from py_modules.tests.helpers import AbstractDatabaseTest
 
 
@@ -13,6 +20,122 @@ class TestDao(AbstractDatabaseTest):
         super().setUp()
         DbMigration(db=self.database).migrate()
         self.dao = Dao(db=self.database)
+
+    def _create_checksum_star(self) -> None:
+        for game_id, name in [
+            ("alpha", "Alpha"),
+            ("beta", "Beta"),
+            ("gamma", "Gamma"),
+        ]:
+            self.dao.save_game_dict(game_id, name)
+            self.dao.save_game_checksum(game_id, "shared", "SHA256", 1, None, None)
+        self.dao.create_game_association("alpha", "beta")
+        self.dao.create_game_association("alpha", "gamma")
+
+    def _confirmation_request(
+        self,
+        snapshot,
+        proposed_parent_game_id: str = "beta",
+        selected_member_ids: tuple[str, ...] = ("alpha", "beta", "gamma"),
+        fingerprint: str | None = None,
+    ) -> AssociationComponentConfirmationRequest:
+        return AssociationComponentConfirmationRequest(
+            anchor_game_id=snapshot.anchor_game_id,
+            proposed_parent_game_id=proposed_parent_game_id,
+            proposed_parent_game_name=proposed_parent_game_id.title(),
+            expected_parent_game_id=snapshot.expected_parent_game_id,
+            expected_fingerprint=fingerprint or snapshot.fingerprint,
+            selected_members=tuple(
+                AssociationComponentMember(
+                    game_id=game_id,
+                    game_name=game_id.title(),
+                )
+                for game_id in selected_member_ids
+            ),
+        )
+
+    def test_grouped_association_read_has_sorted_members_and_fingerprint(self):
+        self._create_checksum_star()
+
+        snapshot = self.dao.get_game_association_component("gamma")
+
+        self.assertEqual(snapshot.anchor_game_id, "gamma")
+        self.assertEqual(
+            tuple(member.id for member in snapshot.existing_members),
+            ("alpha", "beta", "gamma"),
+        )
+        self.assertEqual(snapshot.expected_parent_game_id, "alpha")
+        self.assertEqual(snapshot.status, "confirmed")
+        self.assertEqual(snapshot.aliases, ("beta", "gamma"))
+        self.assertEqual(
+            snapshot.fingerprint,
+            self.dao.game_association_component_fingerprint(("gamma", "alpha", "beta")),
+        )
+
+    def test_component_confirmation_is_idempotent_for_current_parent(self):
+        self._create_checksum_star()
+        snapshot = self.dao.get_game_association_component("beta")
+        request = self._confirmation_request(snapshot, proposed_parent_game_id="alpha")
+        before = self.dao.get_all_game_associations()
+
+        result = self.dao.confirm_game_association_component(request)
+
+        self.assertEqual(result.confirmed_parent.id, "alpha")
+        self.assertEqual(result.status, "confirmed")
+        self.assertEqual(self.dao.get_all_game_associations(), before)
+
+    def test_component_confirmation_rejects_stale_fingerprint_without_writing(self):
+        self._create_checksum_star()
+        snapshot = self.dao.get_game_association_component("beta")
+        before = self.dao.get_all_game_associations()
+
+        with self.assertRaises(AssociationComponentError) as raised:
+            self.dao.confirm_game_association_component(
+                self._confirmation_request(snapshot, fingerprint="stale")
+            )
+
+        self.assertEqual(raised.exception.code, "STALE_COMPONENT")
+        self.assertEqual(self.dao.get_all_game_associations(), before)
+
+    def test_component_confirmation_rejects_nonmembers_without_writing(self):
+        self._create_checksum_star()
+        self.dao.save_game_dict("outsider", "Outsider")
+        snapshot = self.dao.get_game_association_component("beta")
+        before = self.dao.get_all_game_associations()
+
+        with self.assertRaises(AssociationComponentError) as raised:
+            self.dao.confirm_game_association_component(
+                self._confirmation_request(
+                    snapshot,
+                    selected_member_ids=("alpha", "beta", "gamma", "outsider"),
+                )
+            )
+
+        self.assertEqual(raised.exception.code, "UNEXPECTED_MEMBER")
+        self.assertEqual(self.dao.get_all_game_associations(), before)
+
+    def test_component_confirmation_rolls_back_when_star_reinsertion_fails(self):
+        self._create_checksum_star()
+        snapshot = self.dao.get_game_association_component("beta")
+        before = self.dao.get_all_game_associations()
+        original_create = self.dao._create_game_association
+        calls = 0
+
+        def fail_second_insert(connection, parent_game_id, child_game_id):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("injected insertion failure")
+            original_create(connection, parent_game_id, child_game_id)
+
+        with patch.object(self.dao, "_create_game_association", fail_second_insert):
+            with self.assertRaises(AssociationComponentError) as raised:
+                self.dao.confirm_game_association_component(
+                    self._confirmation_request(snapshot, proposed_parent_game_id="beta")
+                )
+
+        self.assertEqual(raised.exception.code, "ASSOCIATION_UPDATE_FAILED")
+        self.assertEqual(self.dao.get_all_game_associations(), before)
 
     def test_identity_components_select_an_explicit_parent_across_a_transitive_checksum_family(
         self,

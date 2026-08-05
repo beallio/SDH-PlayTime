@@ -29,6 +29,49 @@ export type AssociationResult = {
 	};
 };
 
+export type AssociationComponentMember = {
+	gameId: string;
+	gameName: string;
+};
+
+export type AssociationComponentMemberDTO = {
+	game_id: string;
+	game_name: string;
+};
+
+export type AssociationComponentSnapshot = {
+	anchorGameId: string;
+	expectedParentGameId: string | null;
+	existingMembers: AssociationComponentMember[];
+	fingerprint: string;
+	status: "confirmed" | "unconfirmed" | "conflict";
+	aliases: string[];
+};
+
+export type ConfirmAssociationComponentDTO = {
+	anchor_game_id: string;
+	proposed_parent_game_id: string;
+	proposed_parent_game_name: string;
+	expected_parent_game_id: string | null;
+	expected_fingerprint: string;
+	selected_members: AssociationComponentMemberDTO[];
+};
+
+export type AssociationComponentConfirmation = AssociationComponentSnapshot & {
+	proposedParent: AssociationComponentMember;
+	selectedMembers: AssociationComponentMember[];
+	confirmedParent: AssociationComponentMember;
+	status: "confirmed";
+};
+
+export type AssociationComponentReadResult =
+	| { success: true; data: AssociationComponentSnapshot }
+	| { success: false; error: NonNullable<AssociationResult["error"]> };
+
+export type AssociationComponentConfirmationResult =
+	| { success: true; data: AssociationComponentConfirmation }
+	| { success: false; error: NonNullable<AssociationResult["error"]> };
+
 /**
  * Association info for a specific game
  */

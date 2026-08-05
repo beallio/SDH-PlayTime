@@ -1,6 +1,12 @@
 from dataclasses import dataclass
 from typing import List, Dict, Optional
 from py_modules.db.dao import Dao
+from py_modules.schemas.request import AssociationComponentConfirmationRequest
+from py_modules.schemas.response import (
+    AssociationComponentConfirmationOutcome,
+    AssociationComponentError,
+    AssociationComponentReadOutcome,
+)
 
 
 @dataclass(slots=True)
@@ -21,16 +27,7 @@ class GameAssociation:
         }
 
 
-@dataclass(slots=True)
-class AssociationError:
-    code: str
-    message: str
-
-    def to_dict(self) -> Dict:
-        return {
-            "code": self.code,
-            "message": self.message,
-        }
+AssociationError = AssociationComponentError
 
 
 class AssociationManager:
@@ -93,6 +90,48 @@ class AssociationManager:
 
         self.dao.remove_game_association(child_game_id)
         return None
+
+    def get_association_component(
+        self, anchor_game_id: str
+    ) -> AssociationComponentReadOutcome:
+        try:
+            return AssociationComponentReadOutcome(
+                snapshot=self.dao.get_game_association_component(anchor_game_id),
+                error=None,
+            )
+        except AssociationComponentError as error:
+            return AssociationComponentReadOutcome(snapshot=None, error=error)
+
+    def confirm_association_component(
+        self, request: AssociationComponentConfirmationRequest
+    ) -> AssociationComponentConfirmationOutcome:
+        try:
+            return AssociationComponentConfirmationOutcome(
+                confirmation=self.dao.confirm_game_association_component(request),
+                error=None,
+            )
+        except AssociationComponentError as error:
+            return AssociationComponentConfirmationOutcome(
+                confirmation=None, error=error
+            )
+
+    def detach_association_member(
+        self, child_game_id: str
+    ) -> Optional[AssociationError]:
+        try:
+            self.dao.detach_game_association_member(child_game_id)
+            return None
+        except AssociationComponentError as error:
+            return error
+
+    def dissolve_association_component(
+        self, anchor_game_id: str
+    ) -> Optional[AssociationError]:
+        try:
+            self.dao.dissolve_game_association_component(anchor_game_id)
+            return None
+        except AssociationComponentError as error:
+            return error
 
     def get_all_associations(self) -> List[Dict]:
         associations = self.dao.get_all_game_associations()

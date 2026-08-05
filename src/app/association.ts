@@ -3,12 +3,87 @@ import { BACK_END_API } from "@src/constants";
 import type {
 	GameAssociation,
 	CreateGameAssociationDTO,
+	AssociationComponentConfirmationResult,
+	AssociationComponentReadResult,
 	AssociationResult,
+	ConfirmAssociationComponentDTO,
 	GameAssociationInfo,
 } from "@src/types/association";
 import logger from "@src/utils/logger";
 
 export class AssociationService {
+	/** Read a component before the user explicitly confirms a complete star. */
+	async getAssociationComponent(
+		anchorGameId: string,
+	): Promise<AssociationComponentReadResult> {
+		return await call<[string], AssociationComponentReadResult>(
+			BACK_END_API.GET_GAME_ASSOCIATION_COMPONENT,
+			anchorGameId,
+		).catch((error) => {
+			logger.error("Failed to get association component:", error);
+			return {
+				success: false,
+				error: {
+					code: "NETWORK_ERROR",
+					message: "Failed to get association component. Please try again.",
+				},
+			};
+		});
+	}
+
+	/** Confirm the selected parent for a complete logical-game component. */
+	async confirmAssociationComponent(
+		dto: ConfirmAssociationComponentDTO,
+	): Promise<AssociationComponentConfirmationResult> {
+		return await call<
+			[ConfirmAssociationComponentDTO],
+			AssociationComponentConfirmationResult
+		>(BACK_END_API.CONFIRM_GAME_ASSOCIATION_COMPONENT, dto).catch((error) => {
+			logger.error("Failed to confirm association component:", error);
+			return {
+				success: false,
+				error: {
+					code: "NETWORK_ERROR",
+					message: "Failed to confirm association component. Please try again.",
+				},
+			};
+		});
+	}
+
+	/** Detach a child without removing its recorded playtime. */
+	async detachAssociationMember(childGameId: string): Promise<AssociationResult> {
+		return await call<[string], AssociationResult>(
+			BACK_END_API.DETACH_GAME_ASSOCIATION_MEMBER,
+			childGameId,
+		).catch((error) => {
+			logger.error("Failed to detach association member:", error);
+			return {
+				success: false,
+				error: {
+					code: "NETWORK_ERROR",
+					message: "Failed to detach association member. Please try again.",
+				},
+			};
+		});
+	}
+
+	/** Remove every explicit association edge from one component. */
+	async dissolveAssociationComponent(anchorGameId: string): Promise<AssociationResult> {
+		return await call<[string], AssociationResult>(
+			BACK_END_API.DISSOLVE_GAME_ASSOCIATION_COMPONENT,
+			anchorGameId,
+		).catch((error) => {
+			logger.error("Failed to dissolve association component:", error);
+			return {
+				success: false,
+				error: {
+					code: "NETWORK_ERROR",
+					message: "Failed to dissolve association component. Please try again.",
+				},
+			};
+		});
+	}
+
 	/**
 	 * Get all game associations
 	 */
