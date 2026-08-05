@@ -1,99 +1,79 @@
 import { Focusable } from "@decky/ui";
-import { FaTrash, FaLink } from "react-icons/fa";
-import type { GameAssociation } from "@src/types/association";
+import type { AssociationListGroup } from "../associationViewModel";
+import { AssociationCandidateCard } from "./AssociationCandidateCard";
 
 interface AssociationListItemProps {
-	association: GameAssociation;
-	onDelete: () => void;
+	group: AssociationListGroup;
+	onChangeParent: () => void;
+	onDetachChild: (childGameId: string, childGameName: string) => void;
+	onDissolve: () => void;
 }
 
+const actionStyle = {
+	padding: "7px 9px",
+	borderRadius: "4px",
+	background: "rgba(255, 255, 255, 0.08)",
+	fontSize: "11px",
+	cursor: "pointer",
+};
+
+/** Renders a confirmed parent once, followed by its explicit child edges. */
 export function AssociationListItem({
-	association,
-	onDelete,
+	group,
+	onChangeParent,
+	onDetachChild,
+	onDissolve,
 }: AssociationListItemProps) {
 	return (
-		<Focusable
+		<div
 			style={{
 				display: "flex",
-				alignItems: "center",
-				padding: "12px",
-				background: "rgba(255, 255, 255, 0.05)",
-				borderRadius: "4px",
-				gap: "12px",
+				flexDirection: "column",
+				gap: "8px",
+				padding: "10px",
+				background: "rgba(255, 255, 255, 0.025)",
+				borderRadius: "6px",
 			}}
 		>
-			{/* Parent Game */}
-			<div style={{ flex: 1, minWidth: 0 }}>
-				<div
-					style={{
-						fontSize: "13px",
-						fontWeight: 500,
-						color: "#dcdedf",
-						whiteSpace: "nowrap",
-						overflow: "hidden",
-						textOverflow: "ellipsis",
-					}}
+			<div style={{ color: "#8b929a", fontSize: "11px", fontWeight: 600 }}>
+				CONFIRMED PARENT
+			</div>
+			<AssociationCandidateCard card={group.parent} />
+			<div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+				<Focusable
+					onClick={onChangeParent}
+					onActivate={onChangeParent}
+					style={actionStyle}
 				>
-					{association.parentGameName || "[Unknown]"}
-				</div>
-				<div
-					style={{
-						fontSize: "11px",
-						color: "#8b929a",
-					}}
+					Change parent
+				</Focusable>
+				<Focusable
+					onClick={onDissolve}
+					onActivate={onDissolve}
+					style={{ ...actionStyle, color: "#f1c46a" }}
 				>
-					Parent (ID: {association.parentGameId})
-				</div>
+					Dissolve group
+				</Focusable>
 			</div>
 
-			{/* Link Icon */}
-			<div
-				style={{
-					display: "flex",
-					alignItems: "center",
-					color: "#8b929a",
-				}}
-			>
-				<FaLink size={14} />
+			<div style={{ color: "#8b929a", fontSize: "11px", fontWeight: 600 }}>
+				CHILDREN ({group.children.length})
 			</div>
-
-			{/* Child Game */}
-			<div style={{ flex: 1, minWidth: 0 }}>
+			{group.children.map((child) => (
 				<div
-					style={{
-						fontSize: "13px",
-						fontWeight: 500,
-						color: "#dcdedf",
-						whiteSpace: "nowrap",
-						overflow: "hidden",
-						textOverflow: "ellipsis",
-					}}
+					key={child.id}
+					style={{ display: "flex", flexDirection: "column", gap: "6px" }}
 				>
-					{association.childGameName || "[Unknown]"}
+					<AssociationCandidateCard card={child} />
+					<Focusable
+						onClick={() => onDetachChild(child.id, child.title)}
+						onActivate={() => onDetachChild(child.id, child.title)}
+						style={{ ...actionStyle, alignSelf: "flex-end", color: "#f1c46a" }}
+					>
+						Detach child (keeps history)
+					</Focusable>
 				</div>
-				<div
-					style={{
-						fontSize: "11px",
-						color: "#8b929a",
-					}}
-				>
-					Child (ID: {association.childGameId})
-				</div>
-			</div>
-
-			{/* Delete Button */}
-			<Focusable
-				style={{
-					padding: "8px",
-					cursor: "pointer",
-					color: "#dc3545",
-					borderRadius: "4px",
-				}}
-				onClick={onDelete}
-				onActivate={onDelete}
-			>
-				<FaTrash size={14} />
-			</Focusable>
-		</Focusable>
+			))}
+		</div>
 	);
 }

@@ -1,28 +1,57 @@
 import {
+	ButtonItem,
+	ConfirmModal,
 	Focusable,
 	PanelSection,
 	PanelSectionRow,
 	showModal,
-	ConfirmModal,
 } from "@decky/ui";
 import { PageWrapper } from "@src/components/PageWrapper";
-import { navigateToPage, ASSOCIATION_ADD_ROUTE } from "./navigation";
 import { useAssociations } from "./association/hooks/useAssociations";
 import { AddAssociationButton } from "./association/components/AddAssociationButton";
 import { EmptyState } from "./association/components/EmptyState";
-import { ListHeader } from "./association/components/ListHeader";
 import { AssociationListItem } from "./association/components/AssociationListItem";
+import { navigateToAssociationSelection } from "./navigation";
 
 export function AssociationListPage() {
-	const { associations, loading, removeAssociation } = useAssociations();
+	const { groups, loading, error, refresh, detachMember, dissolveGroup } =
+		useAssociations();
 
-	const handleDelete = (childGameId: string, childGameName: string) => {
+	const showResultError = (message: string) => {
 		showModal(
 			<ConfirmModal
-				strTitle="Remove Game Association"
-				strDescription={`Are you sure you want to remove the association for "${childGameName}"? The playtime will no longer be combined.`}
+				strTitle="Association change was not saved"
+				strDescription={message}
+				bOKDisabled
+			/>,
+		);
+	};
+
+	const handleDetach = (childGameId: string, childGameName: string) => {
+		showModal(
+			<ConfirmModal
+				strTitle="Detach child from game group"
+				strDescription={`Detach "${childGameName}"? Its recorded playtime history will be retained; only this explicit association edge is removed.`}
 				onOK={async () => {
-					await removeAssociation(childGameId);
+					const result = await detachMember(childGameId);
+					if (!result.success)
+						showResultError(result.error?.message ?? "Failed to detach child.");
+				}}
+			/>,
+		);
+	};
+
+	const handleDissolve = (anchorGameId: string, parentGameName: string) => {
+		showModal(
+			<ConfirmModal
+				strTitle="Dissolve game group"
+				strDescription={`Dissolve the group confirmed under "${parentGameName}"? This removes all explicit group edges and does not promote a remaining child.`}
+				onOK={async () => {
+					const result = await dissolveGroup(anchorGameId);
+					if (!result.success)
+						showResultError(
+							result.error?.message ?? "Failed to dissolve group.",
+						);
 				}}
 			/>,
 		);
@@ -46,10 +75,14 @@ export function AssociationListPage() {
 				<PanelSection title="Game Associations">
 					<PanelSectionRow>
 						<AddAssociationButton
-							onClick={() => navigateToPage(ASSOCIATION_ADD_ROUTE)}
+							onClick={() => navigateToAssociationSelection()}
 						/>
 					</PanelSectionRow>
-
+					<PanelSectionRow>
+						<ButtonItem layout="below" onClick={() => void refresh()}>
+							Refresh status
+						</ButtonItem>
+					</PanelSectionRow>
 					<PanelSectionRow>
 						<div
 							style={{
@@ -59,32 +92,44 @@ export function AssociationListPage() {
 								lineHeight: 1.4,
 							}}
 						>
-							Associate games to combine their playtime. Child game's playtime
-							will be added to the parent game's total in all statistics.
+							Each card is one confirmed logical game group. Change a parent
+							through the same review-and-confirm path used when creating a
+							group.
 						</div>
 					</PanelSectionRow>
 
-					{associations.length === 0 ? (
+					{error && (
+						<PanelSectionRow>
+							<div style={{ color: "#dc3545", fontSize: "12px" }}>
+								{error.message}
+							</div>
+						</PanelSectionRow>
+					)}
+
+					{groups.length === 0 ? (
 						<EmptyState
 							title="No game associations configured"
-							description="Associate games to combine their playtime statistics"
+							description="Choose a game group to confirm how its playtime is combined"
 						/>
 					) : (
 						<div
 							style={{
 								display: "flex",
 								flexDirection: "column",
-								gap: "4px",
+								gap: "8px",
 								marginTop: "8px",
 							}}
 						>
-							<ListHeader />
-							{associations.map((assoc) => (
+							{groups.map((group) => (
 								<AssociationListItem
-									key={assoc.childGameId}
-									association={assoc}
-									onDelete={() =>
-										handleDelete(assoc.childGameId, assoc.childGameName)
+									key={group.anchorGameId}
+									group={group}
+									onChangeParent={() =>
+										navigateToAssociationSelection(group.anchorGameId)
+									}
+									onDetachChild={handleDetach}
+									onDissolve={() =>
+										handleDissolve(group.anchorGameId, group.parent.title)
 									}
 								/>
 							))}
