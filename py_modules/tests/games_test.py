@@ -37,6 +37,19 @@ class TestGames(AbstractDatabaseTest):
 
         self.assertIn("Parent game does not exist", str(context.exception))
 
+    def test_checksum_rpc_hides_explicitly_associated_children(self):
+        self.dao.save_game_dict("parent", "Parent")
+        self.dao.save_game_dict("child", "Child")
+        self.dao.save_game_checksum(
+            "parent", "parent-checksum", "SHA256", 1, None, None
+        )
+        self.dao.save_game_checksum("child", "child-checksum", "SHA256", 1, None, None)
+        self.dao.create_game_association("parent", "child")
+
+        checksums = Games(self.dao, association_manager=object()).get_games_checksum()
+
+        self.assertEqual([checksum["game"]["id"] for checksum in checksums], ["parent"])
+
 
 if __name__ == "__main__":
     unittest.main()

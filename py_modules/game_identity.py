@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import groupby
-from typing import Iterable, Literal
+from typing import Iterable, Literal, Mapping
 
 
 GameIdentityStatus = Literal["confirmed", "unconfirmed", "conflict"]
@@ -18,6 +18,23 @@ class GameIdentityComponent:
     canonical_id: str
     explicit_parent_ids: tuple[str, ...]
     status: GameIdentityStatus
+
+
+def canonical_game_name(
+    component: GameIdentityComponent,
+    names_by_game_id: Mapping[str, str | None],
+) -> str:
+    """Return the display name for a component's canonical game."""
+
+    if component.canonical_id in names_by_game_id:
+        return names_by_game_id[component.canonical_id] or "Unknown Game"
+
+    component_names = sorted(
+        name
+        for game_id, name in names_by_game_id.items()
+        if game_id in component.members and name
+    )
+    return component_names[0] if component_names else "Unknown Game"
 
 
 class _UnionFind:

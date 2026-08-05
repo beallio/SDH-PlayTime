@@ -557,6 +557,12 @@ class TestPlayTime(AbstractDatabaseTest):
                     },
                     "sessions": [
                         {
+                            "date": "2025-07-15T21:48:13.255000",
+                            "duration": 3600,
+                            "migrated": None,
+                            "checksum": "a3976a0553ba444ac96074ee2330a38a6b635e70a0c2a7ac2d0b568765ce2a0a",
+                        },
+                        {
                             "date": "2025-07-13T01:00:00",
                             "duration": 58,
                             "migrated": None,
@@ -571,12 +577,6 @@ class TestPlayTime(AbstractDatabaseTest):
                         {
                             "date": "2025-01-28T01:00:00",
                             "duration": 26,
-                            "migrated": None,
-                            "checksum": "a3976a0553ba444ac96074ee2330a38a6b635e70a0c2a7ac2d0b568765ce2a0a",
-                        },
-                        {
-                            "date": "2025-07-15T21:48:13.255000",
-                            "duration": 3600,
                             "migrated": None,
                             "checksum": "a3976a0553ba444ac96074ee2330a38a6b635e70a0c2a7ac2d0b568765ce2a0a",
                         },

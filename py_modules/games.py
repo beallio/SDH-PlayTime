@@ -1,6 +1,8 @@
 from py_modules.db.dao import Dao
-from typing import Dict, List
+from collections import defaultdict
+from typing import Dict, List, Set
 from py_modules.schemas.common import Game
+from py_modules.game_identity import canonical_game_name
 from py_modules.schemas.response import (
     FileChecksum,
     GameDictionary,
@@ -16,6 +18,15 @@ class Games:
     def __init__(self, dao: Dao, association_manager=None) -> None:
         self.dao = dao
         self.association_manager = association_manager
+
+    def _get_child_game_ids(self) -> Set[str]:
+        if not self.association_manager:
+            return set()
+
+        return {
+            association["child_game_id"]
+            for association in self.dao.get_all_game_associations()
+        }
 
     def get_by_id(self, game_id: str) -> GamePlaytimeSummary | None:
         components = self.dao.get_game_identity_components()
@@ -50,6 +61,10 @@ class Games:
     def get_dictionary(self) -> List[Dict[str, GameDictionary]]:
         data = self.dao.get_games_dictionary()
         components = self.dao.get_game_identity_components()
+        names_by_game_id = {game.id: game.name for game in data}
+        checksums_by_game_id = defaultdict(list)
+        for checksum in self.dao.get_games_checksum():
+            checksums_by_game_id[checksum.game_id].append(checksum)
 
         result: List[Dict[str, GameDictionary]] = []
 
@@ -62,7 +77,7 @@ class Games:
             game_files_checksum = [
                 checksum
                 for member_id in member_ids
-                for checksum in self.dao.get_game_files_checksum(member_id)
+                for checksum in checksums_by_game_id[member_id]
             ]
 
             file_checksums = [
@@ -85,7 +100,15 @@ class Games:
             )
 
             result.append(
-                GameDictionary(Game(game.id, game.name), files=file_checksums).to_dict()
+                GameDictionary(
+                    Game(
+                        game.id,
+                        canonical_game_name(component, names_by_game_id)
+                        if component
+                        else game.name or "Unknown Game",
+                    ),
+                    files=file_checksums,
+                ).to_dict()
             )
 
         return result
@@ -135,6 +158,7 @@ class Games:
     def get_games_checksum(self):
         games_checksum_without_game_dict = self.dao.get_games_checksum()
         components = self.dao.get_game_identity_components()
+        child_game_ids = self._get_child_game_ids()
         checksums = [
             FileChecksum(
                 Game(
@@ -148,6 +172,7 @@ class Games:
                 game.updated_at,
             ).to_dict()
             for game in games_checksum_without_game_dict
+            if game.game_id not in child_game_ids
         ]
 
         def checksum_sort_key(checksum):
