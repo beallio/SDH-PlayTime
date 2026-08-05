@@ -66,4 +66,23 @@ describe("getPathToGame compatibility", () => {
 
 		await expect(getPathToGame(1)).resolves.toBeUndefined();
 	});
+
+	for (const executable of [
+		"/home/deck/.local/bin/UbisoftConnect-latest.exe",
+		"/home/deck/.local/bin/DuckStation-master.exe",
+	]) {
+		test(`does not resolve a separator-suffixed shared tool: ${executable}`, async () => {
+			setShortcutDetails({ strShortcutExe: executable });
+			let resolverCalled = false;
+
+			await expect(
+				getPathToGame(1, async () => {
+					resolverCalled = true;
+					return { isRegularFile: true, isSymbolicLink: false };
+				}),
+			).resolves.toBeUndefined();
+
+			expect(resolverCalled).toBeFalse();
+		});
+	}
 });

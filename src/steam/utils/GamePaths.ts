@@ -290,12 +290,26 @@ function launcherStem(path: string | undefined): string | undefined {
 		return;
 	}
 
-	return name
-		.replace(/\.(?:appimage|exe|x86|x86_64)$/, "")
-		.replace(
-			/(?:[-_.](?:\d+(?:[._-]\d+)*|alpha|beta|canary|dev|nightly|preview|rc\d*|stable|x86_64|x64|x86|qt|release(?:ltcg)?|ltcg|linux|win(?:32|64)?))+$/i,
-			"",
-		);
+	return name.replace(/\.(?:appimage|exe|x86|x86_64)$/, "");
+}
+
+function isStemVariant(stem: string | undefined, knownStem: string): boolean {
+	if (!stem) {
+		return false;
+	}
+
+	return (
+		stem === knownStem ||
+		(stem.startsWith(knownStem) &&
+			/[-_.]/.test(stem.at(knownStem.length) ?? ""))
+	);
+}
+
+function hasKnownStemVariant(
+	stem: string | undefined,
+	knownStems: ReadonlySet<string>,
+): boolean {
+	return [...knownStems].some((knownStem) => isStemVariant(stem, knownStem));
 }
 
 function hasFlatpakLauncher(
@@ -312,13 +326,14 @@ function hasFlatpakLauncher(
 }
 
 function isHeroicExecutable(path: string | undefined): boolean {
-	return launcherStem(path) === "heroic";
+	return isStemVariant(launcherStem(path), "heroic");
 }
 
 function isLutrisExecutable(path: string | undefined): boolean {
 	const name = basename(path);
 	return (
-		launcherStem(path) === "lutris" || Boolean(name?.includes("lutris-wrapper"))
+		isStemVariant(launcherStem(path), "lutris") ||
+		Boolean(name?.includes("lutris-wrapper"))
 	);
 }
 
@@ -334,15 +349,12 @@ function isKnownLauncherBinary(path: string | undefined): boolean {
 	}
 	return (
 		SHARED_OR_LAUNCHER_BINARIES.has(name) ||
-		SHARED_OR_LAUNCHER_BINARIES.has(stem ?? "") ||
-		KNOWN_LAUNCHER_STEMS.has(stem ?? "") ||
-		KNOWN_EMULATOR_STEMS.has(stem ?? "") ||
+		hasKnownStemVariant(stem, SHARED_OR_LAUNCHER_BINARIES) ||
+		hasKnownStemVariant(stem, KNOWN_LAUNCHER_STEMS) ||
+		hasKnownStemVariant(stem, KNOWN_EMULATOR_STEMS) ||
 		name.includes("launcher") ||
 		name.includes("lutris-wrapper") ||
-		name.includes("emulator") ||
-		name.startsWith("dolphin") ||
-		name.startsWith("pcsx2") ||
-		name.startsWith("ppsspp")
+		name.includes("emulator")
 	);
 }
 
