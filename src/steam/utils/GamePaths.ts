@@ -1,4 +1,5 @@
 import getAppDetails from "./getAppDetails";
+import { Backend } from "@src/app/backend";
 import logger from "@src/utils/logger";
 
 const FLATPAK_LAUNCHERS = {
@@ -34,7 +35,7 @@ const SHARED_OR_LAUNCHER_BINARIES = new Set([
 
 const WRAPPER_SUFFIXES = [".desktop", ".py", ".sh"];
 
-const DIRECT_PAYLOAD_SUFFIXES = [".exe", ".x86", ".x86_64"];
+const DIRECT_PAYLOAD_SUFFIXES = [".appimage", ".exe", ".x86", ".x86_64"];
 
 const KNOWN_LAUNCHER_STEMS = new Set([
 	"bottles",
@@ -391,8 +392,10 @@ function isDirectPayloadCandidate(path: string | undefined): path is string {
 		return false;
 	}
 
-	return DIRECT_PAYLOAD_SUFFIXES.some((suffix) =>
-		lowercasePath.endsWith(suffix),
+	const name = basename(path);
+	return (
+		DIRECT_PAYLOAD_SUFFIXES.some((suffix) => lowercasePath.endsWith(suffix)) ||
+		Boolean(name && !name.includes("."))
 	);
 }
 
@@ -998,28 +1001,31 @@ export function classifyShortcutEvidence(
 }
 
 // NOTE(ynhhoJ): https://github.com/0u73r-h34v3n/chrono-deck/blob/master/src/utils/steam/getPathToGameFileByLaunchCommand.ts
-export default function getEmudeckPathToGame(launchCommand: string) {
-	const normalized = normalizeShortcutEvidence({
-		strShortcutExe: launchCommand,
-	});
-	if (parseTokens(launchCommand).hasUnterminatedQuote) {
-		return;
-	}
-	const [executable, ...launchOptionTokens] = normalized.executableTokens;
-	const evidence = classifyEmudeck({
-		...normalized,
-		executableTokens: executable ? [executable] : [],
-		launchOptionTokens,
-		commandTokens: executable ? [executable, ...launchOptionTokens] : [],
-	});
-	return evidence?.launcherKind === "emudeck-srm"
-		? evidence.payloadPath
+export default function getEmudeckPathToGame(_launchCommand: string) {
+	// A classifier result is untrusted evidence. EmuDeck resolution needs a
+	// dedicated backend adapter before it can become checksum-eligible.
+	return undefined;
+}
+
+async function resolveDirectPayloadPath(
+	evidence: ShortcutEvidenceClassification,
+): Promise<string | undefined> {
+	const response = await Backend.resolveGamePayloads([
+		{
+			launcherKind: evidence.launcherKind,
+			classificationStatus: evidence.status,
+			normalized: evidence.normalized,
+			metadataCandidates: [],
+		},
+	]);
+	const result = response.results[0];
+	return result?.payloadStatus === "reachable" && result.payloadKind === "file"
+		? result.payloadPath ?? undefined
 		: undefined;
 }
 
 export async function getPathToGame(
 	applicationId: number,
-	resolveDirectPayload?: DirectPayloadResolver,
 ) {
 	const appDetails = await getAppDetails(applicationId);
 	if (!appDetails) {
@@ -1031,21 +1037,14 @@ export async function getPathToGame(
 		evidence.launcherKind === "direct" && evidence.status === "recognized"
 			? evidence.normalized.executableTokens[0]
 			: undefined;
-	const directEvidence = directCandidate
-		? await resolveDirectPayload?.(directCandidate)
+	const resolvedDirectPayload = directCandidate
+		? await resolveDirectPayloadPath(
+				evidence,
+			)
 		: undefined;
-	const payloadPath =
-		directCandidate &&
-		directEvidence?.isRegularFile &&
-		!directEvidence.isSymbolicLink
-			? directCandidate
-			: evidence.payloadPath;
-	if (!payloadPath) {
-		logger.error("Unsupported pathToGame:", {
-			strShortcutExe: appDetails.strShortcutExe,
-			strShortcutLaunchOptions: appDetails.strShortcutLaunchOptions,
-		});
+	if (!resolvedDirectPayload) {
+		logger.debug("Unsupported non-Steam game payload.");
 	}
 
-	return payloadPath;
+	return resolvedDirectPayload;
 }

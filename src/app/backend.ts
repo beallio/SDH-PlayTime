@@ -142,6 +142,15 @@ export class Backend {
 		);
 	}
 
+	public static async resolveGamePayloads(
+		entries: GameResolutionRequest[],
+	): Promise<GameResolutionBatchResponse> {
+		return await call<[GameResolutionRequest[]], GameResolutionBatchResponse>(
+			BACK_END_API.RESOLVE_GAME_PAYLOADS,
+			entries,
+		);
+	}
+
 	public static async getGamesDictionary(): Promise<Array<GameDictionary>> {
 		return await call<[], Array<GameDictionary>>(
 			BACK_END_API.GET_GAMES_DICTIONARY,

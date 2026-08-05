@@ -25,6 +25,11 @@ add_plugin_to_path()
 # ruff: noqa: E402
 from py_modules.db.dao import Dao
 from py_modules.files import Files
+from py_modules.game_resolution import (
+    GameResolutionCoordinator,
+    MAX_RESOLUTION_BATCH_SIZE,
+)
+from py_modules.game_resolution.models import BatchResolutionResult, ResolutionResult
 from py_modules.games import Games
 from py_modules.helpers import parse_date
 from py_modules.statistics import Statistics
@@ -70,6 +75,7 @@ def _is_bounded_association_game_id(value: object) -> bool:
 
 class Plugin:
     files: Files = Files()
+    game_resolution_coordinator: GameResolutionCoordinator = GameResolutionCoordinator()
     games: Games
     statistics: Statistics
     time_tracking: TimeTracking
@@ -331,6 +337,28 @@ class Plugin:
         except Exception as e:
             decky.logger.exception("[get_file_sha256] Unhandled exception: %s", e)
             raise
+
+    async def resolve_game_payloads(self, entries: object):
+        """Resolve bounded shortcut hints without executing, mounting, or scanning."""
+        try:
+            result = await asyncio.to_thread(
+                self.game_resolution_coordinator.resolve_batch, entries
+            )
+            return convert_keys_to_camel_case(result.to_dict())
+        except Exception as error:
+            decky.logger.exception(
+                "[resolve_game_payloads] Resolver failed without processing a payload: %s",
+                type(error).__name__,
+            )
+            if isinstance(entries, list) and len(entries) <= MAX_RESOLUTION_BATCH_SIZE:
+                fallback = BatchResolutionResult(
+                    tuple(
+                        ResolutionResult.unknown(reason_code="probe_failure")
+                        for _ in entries
+                    )
+                )
+                return convert_keys_to_camel_case(fallback.to_dict())
+            return {"results": [], "error": "probe_failure"}
 
     async def get_games_dictionary(self):
         try:

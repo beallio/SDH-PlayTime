@@ -19,7 +19,7 @@
 			}
 		},
 		{
-			"id": "direct-appimage-target-without-verified-identity-is-not-a-payload",
+			"id": "direct-appimage-target-requires-backend-payload-proof",
 			"source": {
 				"repository": "0u73r-h34v3n/SDH-PlayTime",
 				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
@@ -29,8 +29,8 @@
 				"strShortcutExe": "\"/home/deck/Applications/Some Game.AppImage\""
 			},
 			"expected": {
-				"status": "unknown",
-				"launcherKind": "unknown",
+				"status": "recognized",
+				"launcherKind": "direct",
 				"externalIdentityHints": {}
 			}
 		},
@@ -115,7 +115,7 @@
 			}
 		},
 		{
-			"id": "appimage-symlink-shape-is-not-sufficient-payload-evidence",
+			"id": "appimage-symlink-shape-requires-backend-payload-proof",
 			"source": {
 				"repository": "0u73r-h34v3n/SDH-PlayTime",
 				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
@@ -125,8 +125,8 @@
 				"strShortcutExe": "/home/deck/.local/bin/Some-Game.AppImage"
 			},
 			"expected": {
-				"status": "unknown",
-				"launcherKind": "unknown",
+				"status": "recognized",
+				"launcherKind": "direct",
 				"externalIdentityHints": {}
 			}
 		},
@@ -164,7 +164,7 @@
 			}
 		},
 		{
-			"id": "direct-extensionless-target-is-not-checksum-eligible",
+			"id": "direct-extensionless-target-requires-backend-payload-proof",
 			"source": {
 				"repository": "0u73r-h34v3n/SDH-PlayTime",
 				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
@@ -174,8 +174,8 @@
 				"strShortcutExe": "/home/deck/bin/game"
 			},
 			"expected": {
-				"status": "unknown",
-				"launcherKind": "unknown",
+				"status": "recognized",
+				"launcherKind": "direct",
 				"externalIdentityHints": {}
 			}
 		},
@@ -311,7 +311,7 @@
 			}
 		},
 		{
-			"id": "extensionless-symlink-shape-is-not-a-direct-payload",
+			"id": "extensionless-symlink-shape-requires-backend-payload-proof",
 			"source": {
 				"repository": "0u73r-h34v3n/SDH-PlayTime",
 				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
@@ -321,8 +321,8 @@
 				"strShortcutExe": "/home/deck/.local/bin/CustomGame"
 			},
 			"expected": {
-				"status": "unknown",
-				"launcherKind": "unknown",
+				"status": "recognized",
+				"launcherKind": "direct",
 				"externalIdentityHints": {}
 			}
 		},

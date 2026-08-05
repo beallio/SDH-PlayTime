@@ -42,6 +42,11 @@ class ReleaseArchiveTests(unittest.TestCase):
         (self.source / "py_modules").mkdir()
         (self.source / "py_modules" / "__init__.py").write_text("")
         (self.source / "py_modules" / "runtime.py").write_text("runtime\n")
+        shutil.copytree(
+            ROOT / "py_modules" / "game_resolution",
+            self.source / "py_modules" / "game_resolution",
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+        )
         (self.source / "py_modules" / "__pycache__").mkdir()
         (self.source / "py_modules" / "__pycache__" / "runtime.pyc").write_bytes(
             b"cache"
@@ -130,6 +135,11 @@ class ReleaseArchiveTests(unittest.TestCase):
                 "py_modules/safe_yaml.py",
                 "py_modules/yaml/__init__.py",
                 "py_modules/yaml/composer.py",
+                "py_modules/game_resolution/__init__.py",
+                "py_modules/game_resolution/coordinator.py",
+                "py_modules/game_resolution/direct.py",
+                "py_modules/game_resolution/filesystem.py",
+                "py_modules/game_resolution/models.py",
                 "py_modules/pyyaml-6.0.3.dist-info/METADATA",
                 "py_modules/pyyaml-6.0.3.dist-info/licenses/LICENSE",
             ):
@@ -192,6 +202,11 @@ class ReleaseArchiveTests(unittest.TestCase):
         for missing_name in (
             "SDH-PlayTime/dist/index.js",
             "SDH-PlayTime/py_modules/__init__.py",
+            "SDH-PlayTime/py_modules/game_resolution/__init__.py",
+            "SDH-PlayTime/py_modules/game_resolution/coordinator.py",
+            "SDH-PlayTime/py_modules/game_resolution/direct.py",
+            "SDH-PlayTime/py_modules/game_resolution/filesystem.py",
+            "SDH-PlayTime/py_modules/game_resolution/models.py",
         ):
             incomplete = self.workdir / f"without-{Path(missing_name).name}.zip"
             with (
