@@ -584,7 +584,13 @@ describe("buildGamePresenceSnapshot", () => {
 			throw new Error(`unexpected write or read RPC: ${String(method)}`);
 		};
 
-		(globalThis as unknown as { appStore: { allApps: { appid: number; display_name: string; app_type: number }[] } }).appStore = {
+		(
+			globalThis as unknown as {
+				appStore: {
+					allApps: { appid: number; display_name: string; app_type: number }[];
+				};
+			}
+		).appStore = {
 			allApps: [
 				{
 					appid: 10,
@@ -593,7 +599,15 @@ describe("buildGamePresenceSnapshot", () => {
 				},
 			],
 		};
-		(globalThis as unknown as { collectionStore: { deckDesktopApps?: { apps: Map<number, { appid: number; display_name: string }> } } }).collectionStore = {
+		(
+			globalThis as unknown as {
+				collectionStore: {
+					deckDesktopApps?: {
+						apps: Map<number, { appid: number; display_name: string }>;
+					};
+				};
+			}
+		).collectionStore = {
 			deckDesktopApps: {
 				apps: new Map([
 					[
@@ -606,7 +620,11 @@ describe("buildGamePresenceSnapshot", () => {
 				]),
 			},
 		};
-		(globalThis as unknown as { SteamClient: { Apps?: { BIsAppInstalled: (appId: number) => boolean } } }).SteamClient = {
+		(
+			globalThis as unknown as {
+				SteamClient: { Apps?: { BIsAppInstalled: (appId: number) => boolean } };
+			}
+		).SteamClient = {
 			Apps: {
 				BIsAppInstalled: (appId: number) => appId === 10,
 			},
