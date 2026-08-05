@@ -3,6 +3,7 @@ import logger from "@src/utils/logger";
 import { toIsoDateOnly } from "@utils/formatters";
 import type { EventBus } from "./system";
 import { BACK_END_API } from "@src/constants";
+import type { AssociationCandidate } from "@src/types/association";
 import type { UserStateManager } from "./userState";
 
 export interface OverallPlayTimes {
@@ -144,6 +145,12 @@ export class Backend {
 	public static async getGamesDictionary(): Promise<Array<GameDictionary>> {
 		return await call<[], Array<GameDictionary>>(
 			BACK_END_API.GET_GAMES_DICTIONARY,
+		);
+	}
+
+	public static async getAssociationCandidates(): Promise<AssociationCandidate[]> {
+		return await call<[], AssociationCandidate[]>(
+			BACK_END_API.GET_ASSOCIATION_CANDIDATES,
 		);
 	}
 

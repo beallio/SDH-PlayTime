@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { BACK_END_API } from "@src/constants";
 import type {
+	AssociationCandidate,
 	AssociationComponentConfirmationResult,
 	AssociationComponentReadResult,
 	ConfirmAssociationComponentDTO,
@@ -17,6 +18,7 @@ mock.module("@decky/api", () => ({
 }));
 
 const { AssociationService } = await import("@src/app/association");
+const { Backend } = await import("@src/app/backend");
 
 const confirmationRequest: ConfirmAssociationComponentDTO = {
 	anchor_game_id: "gamma",
@@ -78,6 +80,23 @@ describe("AssociationService component confirmation", () => {
 			[BACK_END_API.GET_GAME_ASSOCIATION_COMPONENT, "gamma"],
 			[BACK_END_API.CONFIRM_GAME_ASSOCIATION_COMPONENT, confirmationRequest],
 		]);
+	});
+
+	test("reads raw association candidates through the backend client", async () => {
+		const candidates: AssociationCandidate[] = [
+			{
+				game: { id: "child", name: "Child" },
+				duration: 30,
+			},
+			{
+				game: { id: "zero-parent", name: "Zero Parent" },
+				duration: 0,
+			},
+		];
+		callHandler = async () => candidates;
+
+		expect(await Backend.getAssociationCandidates()).toEqual(candidates);
+		expect(calls).toEqual([[BACK_END_API.GET_ASSOCIATION_CANDIDATES]]);
 	});
 
 	test("preserves structured conflicts and supplies a network fallback", async () => {

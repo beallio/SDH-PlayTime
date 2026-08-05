@@ -189,6 +189,24 @@ class TestAssociationManager(AbstractDatabaseTest):
         self.assertIsNotNone(result)
         self.assertEqual(result.code, "PARENT_NOT_FOUND")
 
+    def test_create_association_rejects_dictionary_only_zero_time_identities(self):
+        self.dao.save_game_dict("zero-parent", "Zero Parent")
+        self.dao.save_game_dict("zero-child", "Zero Child")
+        self._create_game("timed-parent", "Timed Parent")
+        self._create_game("timed-child", "Timed Child")
+
+        parent_error = self.association_manager.create_association(
+            "zero-parent", "timed-child"
+        )
+        child_error = self.association_manager.create_association(
+            "timed-parent", "zero-child"
+        )
+
+        self.assertIsNotNone(parent_error)
+        self.assertEqual(parent_error.code, "PARENT_NOT_FOUND")
+        self.assertIsNotNone(child_error)
+        self.assertEqual(child_error.code, "CHILD_NOT_FOUND")
+
     def test_create_association_child_not_found_error(self):
         """Test error when child game doesn't exist."""
         self._create_game("parent_game", "Parent Game")
@@ -698,6 +716,35 @@ class TestGamesDictionaryWithAssociations(AbstractDatabaseTest):
 
         # Should have all 3 games
         self.assertEqual(len(result), 3)
+
+    def test_association_candidates_keep_children_and_zero_time_identities(self):
+        from py_modules.games import Games
+
+        self.dao.save_game_dict("zero-parent", "")
+        self._create_game("child-game", "Child Game")
+        self.dao.create_game_association("zero-parent", "child-game")
+
+        games = Games(dao=self.dao, association_manager=self.association_manager)
+        candidates = games.get_association_candidates()
+        legacy_dictionary = games.get_dictionary()
+
+        self.assertEqual(
+            candidates,
+            [
+                {
+                    "game": {"id": "child-game", "name": "Child Game"},
+                    "duration": 3600,
+                },
+                {
+                    "game": {"id": "zero-parent", "name": "Unknown Game"},
+                    "duration": 0,
+                },
+            ],
+        )
+        self.assertEqual(
+            [entry["game"]["id"] for entry in legacy_dictionary],
+            ["zero-parent"],
+        )
 
 
 class TestGetGameWithAssociations(AbstractDatabaseTest):

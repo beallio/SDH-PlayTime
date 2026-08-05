@@ -46,14 +46,14 @@ class AssociationManager:
                 message="Cannot associate a game with itself.",
             )
 
-        parent_game = self.dao.get_game(parent_game_id)
+        parent_game = self.dao.get_game_with_overall_time(parent_game_id)
         if not parent_game:
             return AssociationError(
                 code="PARENT_NOT_FOUND",
                 message=f"Parent game '{parent_game_id}' does not exist.",
             )
 
-        child_game = self.dao.get_game(child_game_id)
+        child_game = self.dao.get_game_with_overall_time(child_game_id)
         if not child_game:
             return AssociationError(
                 code="CHILD_NOT_FOUND",

@@ -15,6 +15,7 @@ export const BACK_END_API = {
 	HAS_MIN_REQUIRED_PYTHON_VERSION: "has_min_required_python_version",
 	GET_FILE_SHA256: "get_file_sha256",
 	GET_GAMES_DICTIONARY: "get_games_dictionary",
+	GET_ASSOCIATION_CANDIDATES: "get_association_candidates",
 	SAVE_GAME_CHECKSUM: "save_game_checksum",
 	REMOVE_GAME_CHECKSUM: "remove_game_checksum",
 	REMOVE_ALL_GAME_CHECKSUM: "remove_all_game_checksum",

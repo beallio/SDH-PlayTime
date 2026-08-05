@@ -561,6 +561,38 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(confirmation_result["data"]["status"], "confirmed")
         self.assertEqual(confirmation_result["data"]["aliases"], ["alpha", "gamma"])
 
+    async def test_association_candidates_include_children_and_zero_time_identities(
+        self,
+    ):
+        plugin = self.main.Plugin()
+        await plugin._main()
+        await plugin.set_current_user("76561198077777776")
+        dao = plugin.association_manager.dao
+        dao.save_game_dict("zero-parent", "")
+        dao.save_game_dict("child-game", "Child Game")
+        dao.create_game_association("zero-parent", "child-game")
+
+        candidates = await plugin.get_association_candidates()
+        legacy_dictionary = await plugin.get_games_dictionary()
+
+        self.assertEqual(
+            candidates,
+            [
+                {
+                    "game": {"id": "child-game", "name": "Child Game"},
+                    "duration": 0,
+                },
+                {
+                    "game": {"id": "zero-parent", "name": "Unknown Game"},
+                    "duration": 0,
+                },
+            ],
+        )
+        self.assertEqual(
+            [entry["game"]["id"] for entry in legacy_dictionary],
+            ["zero-parent"],
+        )
+
     async def test_association_component_confirmation_rejects_malformed_input(self):
         plugin = self.main.Plugin()
         await plugin._main()

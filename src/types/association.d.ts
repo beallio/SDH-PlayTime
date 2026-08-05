@@ -39,6 +39,14 @@ export type AssociationComponentMemberDTO = {
 	game_name: string;
 };
 
+export type AssociationCandidate = {
+	game: {
+		id: string;
+		name: string;
+	};
+	duration: number;
+};
+
 export type AssociationComponentSnapshot = {
 	anchorGameId: string;
 	expectedParentGameId: string | null;

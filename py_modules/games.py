@@ -106,6 +106,11 @@ class Games:
 
         return result
 
+    def get_association_candidates(self) -> List[Dict]:
+        return [
+            candidate.to_dict() for candidate in self.dao.get_association_candidates()
+        ]
+
     def save_game_checksum(
         self,
         game_id: str,
@@ -177,7 +182,7 @@ class Games:
         return sorted(checksums, key=checksum_sort_key)
 
     def link_game_to_game_with_checksum(self, child_game_id: str, parent_game_id: str):
-        parent_game = self.dao.get_game(parent_game_id)
+        parent_game = self.dao.get_game_with_overall_time(parent_game_id)
 
         if not parent_game or parent_game.name is None:
             raise ValueError(
