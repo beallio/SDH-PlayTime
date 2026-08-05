@@ -66,6 +66,7 @@ type GameResolutionPayloadKind = "file" | "directory" | "unknown";
 
 type GameResolutionProvenance =
 	| "direct_executable"
+	| "heroic_metadata"
 	| "untrusted_hint"
 	| "none";
 

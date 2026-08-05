@@ -17,7 +17,7 @@ ClassificationStatus = Literal["recognized", "unknown", "ambiguous"]
 MetadataStatus = Literal["not_requested", "not_found", "resolved", "invalid"]
 PayloadStatus = Literal["reachable", "unreachable", "unknown"]
 PayloadKind = Literal["file", "directory", "unknown"]
-Provenance = Literal["direct_executable", "untrusted_hint", "none"]
+Provenance = Literal["direct_executable", "heroic_metadata", "untrusted_hint", "none"]
 ReasonCode = Literal[
     "missing",
     "ambiguous",
