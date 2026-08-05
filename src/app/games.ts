@@ -1,5 +1,4 @@
 import { toaster } from "@decky/api";
-import { getPathToGame } from "@src/steam/utils/GamePaths";
 import {
 	$gameChecksumsLoadingState,
 	$generatingChecksumForAppWithIndex,
@@ -26,42 +25,42 @@ export function getAllNonSteamAppIds() {
 
 export async function getFileSHA256(applicationId: number) {
 	try {
-		const pathToGame = await getPathToGame(applicationId);
 		const { display_name: displayName } =
 			appStore.GetAppOverviewByAppID(applicationId);
 
-		if (isNil(pathToGame)) {
-			logger.debug(
-				"[getFileSHA256] null or empty path to game. App ID: ",
-				applicationId,
-			);
-
-			return {
-				id: `${applicationId}`,
-				name: displayName,
-			};
-		}
-
-		const fileSHA256 = await Backend.getFileSHA256(pathToGame);
-
-		if (isNil(fileSHA256)) {
-			return {
-				id: `${applicationId}`,
-				name: displayName,
-				pathToGame: pathToGame,
-			};
-		}
+		const result = await Backend.getGameChecksum({ appId: applicationId });
 
 		return {
 			id: `${applicationId}`,
 			name: displayName,
-			checksum: fileSHA256,
-			pathToGame,
+			checksum: result.checksum ?? undefined,
+			status: result.status,
 		};
 	} catch (error) {
 		logger.error(error);
 
 		return undefined;
+	}
+}
+
+export function countReadyChecksums(games: Iterable<LocalNonSteamGame>) {
+	return [...games].filter(
+		(game) => game.status === "ready" && !isNil(game.checksum),
+	).length;
+}
+
+function checksumFailureMessage(status: GameChecksumStatus) {
+	switch (status) {
+		case "unsupported_shortcut":
+			return "This shortcut is not supported for checksum detection.";
+		case "missing_metadata":
+			return "Game metadata needed for checksum detection is unavailable.";
+		case "payload_unavailable":
+			return "The game payload is unavailable for checksum detection.";
+		case "hash_failure":
+			return "An error happened while generating file checksum.";
+		case "ready":
+			return "File checksum is undefined.";
 	}
 }
 
@@ -152,7 +151,7 @@ export async function initializeGameDetectionByChecksum() {
 
 	toaster.toast({
 		title: "PlayTime",
-		body: `Generated SHA256 for ${gameChecksums.nonSteam.size}/${allNonSteamAppIdsLength} non-steam games.`,
+		body: `Generated SHA256 for ${countReadyChecksums(gameChecksums.nonSteam.values())}/${allNonSteamAppIdsLength} non-steam games.`,
 	});
 }
 
@@ -168,19 +167,10 @@ export async function addGameChecksumById(gameId: string) {
 		return;
 	}
 
-	if (isNil(checksum?.pathToGame)) {
+	if (checksum.status !== "ready" || isNil(checksum.checksum)) {
 		toaster.toast({
 			title: "PlayTime",
-			body: "Impossible to detect path to game.",
-		});
-
-		return;
-	}
-
-	if (isNil(checksum.checksum)) {
-		toaster.toast({
-			title: "PlayTime",
-			body: "File checksum is undefined.",
+			body: checksumFailureMessage(checksum.status),
 		});
 
 		return;
@@ -200,54 +190,6 @@ export async function addGameChecksumById(gameId: string) {
 		toaster.toast({
 			title: "PlayTime",
 			body: `Saved checksum for ${checksum.name}`,
-		});
-	});
-}
-
-export async function addGameChecksumByFile(game: Game, filePath?: string) {
-	if (isNil(game) || isNil(game.id) || isNil(game.name)) {
-		toaster.toast({
-			title: "PlayTime",
-			body: "Impossible to detect game for what should be generated checksum.",
-		});
-
-		return;
-	}
-
-	if (isNil(filePath)) {
-		toaster.toast({
-			title: "PlayTime",
-			body: "Impossible to detect path to game.",
-		});
-
-		return;
-	}
-
-	const checksum = await Backend.getFileSHA256(filePath);
-
-	if (isNil(checksum)) {
-		toaster.toast({
-			title: "PlayTime",
-			body: "An error happened while generating file checksum",
-		});
-
-		return;
-	}
-
-	return await Backend.addGameChecksum(
-		game.id,
-		checksum,
-		"SHA256",
-		// NOTE(ynhhoJ): 16 MB
-		16 * 1024 * 1024,
-	).then(async () => {
-		$toggleUpdateInListeningComponents.set(
-			!$toggleUpdateInListeningComponents.get(),
-		);
-
-		toaster.toast({
-			title: "PlayTime",
-			body: `Saved checksum for ${game.name}`,
 		});
 	});
 }

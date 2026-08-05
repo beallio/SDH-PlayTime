@@ -20,8 +20,6 @@ type ApplyManualTimeCorrectionDTO = ApplyManualTimeCorrection[];
 
 type GetGameDTO = string;
 
-type GetFileSHA256DTO = string;
-
 type AddGameChecksumDTO = {
 	game_id: string;
 	checksum: string;

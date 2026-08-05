@@ -26,10 +26,12 @@ add_plugin_to_path()
 from py_modules.db.dao import Dao
 from py_modules.files import Files
 from py_modules.game_resolution import (
+    GameChecksumCoordinator,
     GameResolutionCoordinator,
     MAX_RESOLUTION_BATCH_SIZE,
 )
 from py_modules.game_resolution.models import BatchResolutionResult, ResolutionResult
+from py_modules.game_resolution.steam_shortcuts import SteamShortcutCatalog
 from py_modules.games import Games
 from py_modules.helpers import parse_date
 from py_modules.statistics import Statistics
@@ -40,7 +42,6 @@ from py_modules.schemas.request import (
     ApplyManualTimeCorrectionDict,
     AssociationComponentConfirmationRequest,
     DailyStatisticsForPeriodDict,
-    GetFileSHA256DTO,
     GetGameDTO,
     HasDataBeforeDict,
     MAX_ASSOCIATION_GAME_ID_LENGTH,
@@ -76,6 +77,7 @@ def _is_bounded_association_game_id(value: object) -> bool:
 class Plugin:
     files: Files = Files()
     game_resolution_coordinator: GameResolutionCoordinator = GameResolutionCoordinator()
+    game_checksum_coordinator: GameChecksumCoordinator
     games: Games
     statistics: Statistics
     time_tracking: TimeTracking
@@ -87,6 +89,14 @@ class Plugin:
         try:
             # Initialize UserManager for per-user database handling
             self.user_manager = UserManager(data_dir, decky.logger)
+            self.game_checksum_coordinator = GameChecksumCoordinator(
+                self.game_resolution_coordinator,
+                self.files,
+                SteamShortcutCatalog(
+                    Path(decky_user_home),
+                    lambda: self.user_manager.current_user_id,
+                ),
+            )
 
             # NOTE: Services (games, statistics, time_tracking) will be initialized
             # when set_current_user is called from the frontend.
@@ -331,12 +341,22 @@ class Plugin:
 
         return True
 
-    async def get_file_sha256(self, path: GetFileSHA256DTO):
+    async def get_game_checksum(self, shortcut_evidence: object):
         try:
-            return await asyncio.to_thread(self.files.get_file_sha256, path)
-        except Exception as e:
-            decky.logger.exception("[get_file_sha256] Unhandled exception: %s", e)
-            raise
+            result = await asyncio.to_thread(
+                self.game_checksum_coordinator.get_checksum, shortcut_evidence
+            )
+            return convert_keys_to_camel_case(result.to_dict())
+        except Exception as error:
+            decky.logger.exception(
+                "[get_game_checksum] Checksum coordinator failed without hashing a payload: %s",
+                type(error).__name__,
+            )
+            return {
+                "checksum": None,
+                "status": "payload_unavailable",
+                "reasonCode": "probe_failure",
+            }
 
     async def resolve_game_payloads(self, entries: object):
         """Resolve bounded shortcut hints without executing, mounting, or scanning."""

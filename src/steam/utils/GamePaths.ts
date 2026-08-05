@@ -1007,36 +1007,44 @@ export default function getEmudeckPathToGame(_launchCommand: string) {
 	return undefined;
 }
 
-async function resolvePayloadPath(
+function checksumRequest(
 	evidence: ShortcutEvidenceClassification,
+): GameResolutionRequest | undefined {
+	const supportedCandidate =
+		evidence.status === "recognized" &&
+		(evidence.launcherKind === "direct" || evidence.launcherKind === "heroic");
+	if (!supportedCandidate) {
+		return;
+	}
+	return {
+		launcherKind: evidence.launcherKind,
+		classificationStatus: evidence.status,
+		normalized: evidence.normalized,
+		metadataCandidates: [],
+	};
+}
+
+async function resolvePayloadPath(
+	request: GameResolutionRequest,
 ): Promise<string | undefined> {
-	const response = await Backend.resolveGamePayloads([
-		{
-			launcherKind: evidence.launcherKind,
-			classificationStatus: evidence.status,
-			normalized: evidence.normalized,
-			metadataCandidates: [],
-		},
-	]);
+	const response = await Backend.resolveGamePayloads([request]);
 	const result = response.results[0];
 	return result?.payloadStatus === "reachable" && result.payloadKind === "file"
 		? (result.payloadPath ?? undefined)
 		: undefined;
 }
 
-export async function getPathToGame(applicationId: number) {
+async function getGameResolutionRequest(applicationId: number) {
 	const appDetails = await getAppDetails(applicationId);
 	if (!appDetails) {
 		return;
 	}
+	return checksumRequest(classifyShortcutEvidence(appDetails));
+}
 
-	const evidence = classifyShortcutEvidence(appDetails);
-	const supportedCandidate =
-		evidence.status === "recognized" &&
-		(evidence.launcherKind === "direct" || evidence.launcherKind === "heroic");
-	const resolvedPayload = supportedCandidate
-		? await resolvePayloadPath(evidence)
-		: undefined;
+export async function getPathToGame(applicationId: number) {
+	const request = await getGameResolutionRequest(applicationId);
+	const resolvedPayload = request ? await resolvePayloadPath(request) : undefined;
 	if (!resolvedPayload) {
 		logger.debug("Unsupported non-Steam game payload.");
 	}

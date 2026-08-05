@@ -1,7 +1,7 @@
-import { FileSelectionType, openFilePicker, toaster } from "@decky/api";
+import { toaster } from "@decky/api";
 import { Menu, MenuGroup, MenuItem, showContextMenu } from "@decky/ui";
 import { Backend } from "@src/app/backend";
-import { addGameChecksumByFile, addGameChecksumById } from "@src/app/games";
+import { addGameChecksumById } from "@src/app/games";
 import { $toggleUpdateInListeningComponents } from "@src/stores/ui";
 import { isNil } from "es-toolkit";
 import { useEffect, useState } from "react";
@@ -130,28 +130,6 @@ function ChecksumOptionsMenu({
 
 	return (
 		<MenuGroup label="Checksum">
-			<MenuItem
-				onClick={async () => {
-					const path = await Backend.getDeckyHome();
-
-					openFilePicker(
-						FileSelectionType.FILE,
-						path,
-						true,
-						true,
-						undefined,
-						undefined,
-						false,
-						false,
-					).then((val) => {
-						addGameChecksumByFile({ id: gameId, name: gameName }, val.path);
-					});
-				}}
-				disabled={hasChecksum}
-			>
-				Add game checksum by file
-			</MenuItem>
-
 			<MenuItem
 				onClick={() =>
 					showLinkToAnotherGameWithChecksumContextMenu(

@@ -145,6 +145,23 @@ class ResolutionRequest:
             metadata_candidates=_metadata_candidates(value.get("metadataCandidates")),
         )
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "launcherKind": self.launcher_kind,
+            "classificationStatus": self.classification_status,
+            "normalized": {
+                "flatpakAppId": self.normalized.flatpak_app_id,
+                "shortcutExe": self.normalized.shortcut_exe,
+                "shortcutLaunchOptions": self.normalized.shortcut_launch_options,
+                "shortcutStartDir": self.normalized.shortcut_start_dir,
+                "executableTokens": list(self.normalized.executable_tokens),
+                "launchOptionTokens": list(self.normalized.launch_option_tokens),
+                "startDirTokens": list(self.normalized.start_dir_tokens),
+                "commandTokens": list(self.normalized.command_tokens),
+            },
+            "metadataCandidates": list(self.metadata_candidates),
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class ResolutionResult:

@@ -32,8 +32,6 @@ ApplyManualTimeCorrectionDict = List[ApplyManualTimeCorrectionList]
 
 GetGameDTO = str
 
-GetFileSHA256DTO = str
-
 
 class AddGameChecksumDict(TypedDict):
     game_id: str

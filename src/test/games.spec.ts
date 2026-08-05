@@ -7,7 +7,8 @@ mock.module("@decky/api", () => ({
 }));
 
 const { Backend } = await import("@src/app/backend");
-const { getNonSteamGamesChecksumFromDataBase } = await import("@src/app/games");
+const { countReadyChecksums, getNonSteamGamesChecksumFromDataBase } =
+	await import("@src/app/games");
 const { gameChecksums } = await import("@src/stores/games");
 
 describe("getNonSteamGamesChecksumFromDataBase", () => {
@@ -44,5 +45,18 @@ describe("getNonSteamGamesChecksumFromDataBase", () => {
 
 		expect(gameChecksums.dataBase.has("00123")).toBe(true);
 		expect(gameChecksums.dataBase.has("456")).toBe(false);
+	});
+
+	test("counts only generated checksum results as successful hashes", () => {
+		expect(
+			countReadyChecksums([
+				{ id: "1", name: "Ready", checksum: "digest", status: "ready" },
+				{ id: "2", name: "Unsupported", status: "unsupported_shortcut" },
+				{ id: "3", name: "Missing", status: "missing_metadata" },
+				{ id: "4", name: "Unavailable", status: "payload_unavailable" },
+				{ id: "5", name: "Failure", status: "hash_failure" },
+				{ id: "6", name: "Empty", status: "ready" },
+			]),
+		).toBe(1);
 	});
 });

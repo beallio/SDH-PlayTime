@@ -135,10 +135,12 @@ export class Backend {
 		});
 	}
 
-	public static async getFileSHA256(path: string): Promise<Nullable<string>> {
-		return await call<[GetFileSHA256DTO], Nullable<string>>(
-			BACK_END_API.GET_FILE_SHA256,
-			path,
+	public static async getGameChecksum(
+		request: GameChecksumRequest,
+	): Promise<GameChecksumResponse> {
+		return await call<[GameChecksumRequest], GameChecksumResponse>(
+			BACK_END_API.GET_GAME_CHECKSUM,
+			request,
 		);
 	}
 

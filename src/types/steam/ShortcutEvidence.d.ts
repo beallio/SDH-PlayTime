@@ -105,6 +105,25 @@ interface GameResolutionBatchResponse {
 	error: GameResolutionReasonCode | null;
 }
 
+interface GameChecksumRequest {
+	appId: number;
+}
+
+type GameChecksumStatus =
+	| "ready"
+	| "unsupported_shortcut"
+	| "missing_metadata"
+	| "payload_unavailable"
+	| "hash_failure";
+
+type GameChecksumReasonCode = GameResolutionReasonCode | "hash_failure";
+
+interface GameChecksumResponse {
+	checksum: string | null;
+	status: GameChecksumStatus;
+	reasonCode: GameChecksumReasonCode | null;
+}
+
 type AppDetailsFailureReason =
 	| "unsupported-runtime"
 	| "registration-error"

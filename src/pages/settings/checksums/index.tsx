@@ -28,6 +28,7 @@ import { TableCSS } from "@src/styles";
 import { isNil } from "es-toolkit";
 import logger from "@src/utils/logger";
 import { useEffect, useState } from "react";
+import { getChecksumStatusPresentation } from "./status";
 
 function verifyIfHasChecksumSaved(
 	fileChecksum: Nullable<string>,
@@ -225,33 +226,18 @@ function FileChecksumStatus({
 	game: LocalNonSteamGame;
 	hasChecksumSaved: boolean;
 }) {
-	if (isNil(game?.pathToGame)) {
-		return (
-			<span className="inline-flex justify-center items-center rounded-md bg-red-400/10 px-2 py-1 text-xs font-medium text-red-400 ring-1 ring-red-400/20 ring-inset">
-				File not found or unsupported path
-			</span>
-		);
-	}
-
-	if (isNil(game?.checksum)) {
-		return (
-			<span className="inline-flex justify-center items-center rounded-md bg-red-400/10 px-2 py-1 text-xs font-medium text-red-400 ring-1 ring-red-400/20 ring-inset">
-				Unknown checksum
-			</span>
-		);
-	}
-
-	if (!hasChecksumSaved) {
-		return (
-			<span className="inline-flex justify-center items-center rounded-md bg-yellow-400/10 px-2 py-1 text-xs font-medium text-yellow-400 ring-1 ring-yellow-400/20 ring-inset">
-				Not saved
-			</span>
-		);
-	}
-
+	const { label, tone } = getChecksumStatusPresentation(game, hasChecksumSaved);
+	const colorClassName =
+		tone === "success"
+			? "bg-green-400/10 text-green-400 ring-green-400/20"
+			: tone === "warning"
+				? "bg-yellow-400/10 text-yellow-400 ring-yellow-400/20"
+				: "bg-red-400/10 text-red-400 ring-red-400/20";
 	return (
-		<span className="inline-flex justify-center items-center rounded-md bg-green-400/10 px-2 py-1 text-xs font-medium text-green-400 ring-1 ring-green-400/20 ring-inset">
-			Saved
+		<span
+			className={`inline-flex justify-center items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${colorClassName}`}
+		>
+			{label}
 		</span>
 	);
 }
