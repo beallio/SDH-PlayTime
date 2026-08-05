@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
 import tempfile
 import unittest
@@ -46,18 +47,17 @@ class ReleaseArchiveTests(unittest.TestCase):
             b"cache"
         )
         (self.source / "py_modules" / "test_runtime.py").write_text("test tooling\n")
-        (self.source / "requirements-vendored.txt").write_text("PyYAML==6.0.3\n")
-        (self.source / "py_modules" / "safe_yaml.py").write_text(
-            "def safe_load(value):\n    return value\n"
+        shutil.copy2(ROOT / "requirements-vendored.txt", self.source)
+        shutil.copy2(ROOT / "py_modules" / "safe_yaml.py", self.source / "py_modules")
+        shutil.copytree(
+            ROOT / "py_modules" / "yaml",
+            self.source / "py_modules" / "yaml",
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
         )
-        (self.source / "py_modules" / "yaml").mkdir()
-        (self.source / "py_modules" / "yaml" / "__init__.py").write_text("")
-        vendored_dist_info = self.source / "py_modules" / "pyyaml-6.0.3.dist-info"
-        (vendored_dist_info / "licenses").mkdir(parents=True)
-        (vendored_dist_info / "METADATA").write_text(
-            "Metadata-Version: 2.4\nName: PyYAML\nVersion: 6.0.3\n"
+        shutil.copytree(
+            ROOT / "py_modules" / "pyyaml-6.0.3.dist-info",
+            self.source / "py_modules" / "pyyaml-6.0.3.dist-info",
         )
-        (vendored_dist_info / "licenses" / "LICENSE").write_text("MIT\n")
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -129,6 +129,7 @@ class ReleaseArchiveTests(unittest.TestCase):
                 "py_modules/",
                 "py_modules/safe_yaml.py",
                 "py_modules/yaml/__init__.py",
+                "py_modules/yaml/composer.py",
                 "py_modules/pyyaml-6.0.3.dist-info/METADATA",
                 "py_modules/pyyaml-6.0.3.dist-info/licenses/LICENSE",
             ):
@@ -239,6 +240,12 @@ class ReleaseArchiveTests(unittest.TestCase):
                 None,
             ),
             (
+                "missing transitive runtime module",
+                "rewrite",
+                "SDH-PlayTime/py_modules/yaml/composer.py",
+                None,
+            ),
+            (
                 "version mismatch",
                 "rewrite",
                 f"{dist_info}/METADATA",
@@ -264,6 +271,18 @@ class ReleaseArchiveTests(unittest.TestCase):
                 b"test tooling",
             ),
             (
+                "undeclared runtime module",
+                "append",
+                "SDH-PlayTime/py_modules/yaml/backdoor.py",
+                b"payload = 'not upstream'\n",
+            ),
+            (
+                "cython source",
+                "append",
+                "SDH-PlayTime/py_modules/yaml/_yaml.pyx",
+                b"native source",
+            ),
+            (
                 "second dist-info",
                 "append",
                 "SDH-PlayTime/py_modules/pyyaml-6.0.4.dist-info/METADATA",
@@ -282,6 +301,13 @@ class ReleaseArchiveTests(unittest.TestCase):
                         self._append_member(archive, member_name, contents)
                 with self.assertRaises(release_archive.ArchiveValidationError):
                     release_archive.validate_archive(archive, version)
+
+    def test_build_rejects_modified_vendored_source_file(self) -> None:
+        (self.source / "py_modules" / "yaml" / "composer.py").write_text(
+            "modified source\n", encoding="utf-8"
+        )
+        with self.assertRaises(release_archive.ArchiveValidationError):
+            self._build("3.3.0+beallio.1")
 
 
 if __name__ == "__main__":

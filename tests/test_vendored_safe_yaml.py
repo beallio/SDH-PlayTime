@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib.util
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -38,8 +37,13 @@ class VendoredSafeYamlTests(unittest.TestCase):
         self.assertIn("Name: PyYAML\n", metadata)
         self.assertIn(f"Version: {PY_YAML_VERSION}\n", metadata)
         self.assertTrue((dist_infos[0] / "licenses" / "LICENSE").is_file())
+        self.assertEqual(
+            release_archive.VENDORED_PYYAML_SOURCE_SHA256,
+            "d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f",
+        )
+        self.assertIn("yaml/composer.py", release_archive.VENDORED_PYYAML_FILE_HASHES)
 
-    def test_clean_archive_imports_only_vendored_safe_yaml(self) -> None:
+    def test_clean_archive_never_binds_to_host_pyyaml_or_native_code(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             workdir = Path(temporary_directory)
             archive = release_archive.build_archive(
@@ -57,21 +61,36 @@ class VendoredSafeYamlTests(unittest.TestCase):
                     f"SDH-PlayTime/py_modules/{PY_YAML_DIST_INFO}/licenses/LICENSE",
                     names,
                 )
+                for relative_path in release_archive.VENDORED_PYYAML_FILE_HASHES:
+                    self.assertIn(f"SDH-PlayTime/py_modules/{relative_path}", names)
                 zip_file.extractall(workdir)
 
             plugin_root = workdir / "SDH-PlayTime"
-            environment = os.environ.copy()
-            environment["PYTHONNOUSERSITE"] = "1"
-            environment["PYTHONPATH"] = os.pathsep.join(
-                (str(plugin_root), str(plugin_root / "py_modules"))
+            poison_package = workdir / "poison" / "yaml"
+            poison_package.mkdir(parents=True)
+            (poison_package / "__init__.py").write_text("", encoding="utf-8")
+            (poison_package / "_yaml.py").write_text(
+                "raise AssertionError('host native YAML binding was imported')\n",
+                encoding="utf-8",
             )
             runtime_check = """
 from pathlib import Path
+import sys
 
+plugin_root = Path.cwd()
+poison_root = plugin_root.parent / "poison"
+# Reproduce the plugin's append-only path setup with a preinstalled top-level
+# yaml package available first. The vendored package must never import it.
+sys.path.extend((str(poison_root), str(plugin_root), str(plugin_root / "py_modules")))
 from py_modules import safe_yaml, yaml
 
-plugin_modules = Path.cwd() / "py_modules"
+plugin_modules = plugin_root / "py_modules"
 assert Path(yaml.__file__).resolve().is_relative_to(plugin_modules.resolve())
+assert "yaml" not in sys.modules
+assert not any(
+    name == "_yaml" or name.startswith("yaml.") or name.startswith("py_modules.yaml._yaml")
+    for name in sys.modules
+)
 assert safe_yaml.__all__ == ("safe_load",)
 assert safe_yaml.safe_load(b"game: Hades\\nrunner: wine\\n") == {
     "game": "Hades",
@@ -96,14 +115,26 @@ for value, options in (
         raise AssertionError(f"unsafe YAML input was accepted: {value!r}")
 """
             result = subprocess.run(
-                [sys.executable, "-S", "-c", runtime_check],
+                [sys.executable, "-I", "-S", "-c", runtime_check],
                 cwd=plugin_root,
-                env=environment,
                 capture_output=True,
                 text=True,
                 check=False,
             )
             self.assertEqual(result.returncode, 0, msg=result.stderr)
+
+    def test_safe_load_rejects_deep_and_aliased_structures_as_value_errors(
+        self,
+    ) -> None:
+        from py_modules import safe_yaml
+
+        lines = [f"{'  ' * depth}child:" for depth in range(33)]
+        lines.append(f"{'  ' * 33}value: true")
+        deeply_nested_mapping = "\n".join(lines)
+
+        for value in (deeply_nested_mapping, "&cycle [*cycle]"):
+            with self.subTest(value=value[:20]), self.assertRaises(ValueError):
+                safe_yaml.safe_load(value)
 
 
 if __name__ == "__main__":
