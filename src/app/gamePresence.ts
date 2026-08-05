@@ -55,6 +55,8 @@ export type GamePresenceCandidate = {
 	id: string;
 	name: string;
 	source: GamePresenceSource | "unknown";
+	/** Present only when recognized shortcut evidence identified a supported launcher. */
+	launcherKind?: "direct" | "heroic";
 	tracked: boolean;
 	recentPlaytime: number;
 	totalPlaytime: number;
@@ -554,6 +556,7 @@ export async function buildGamePresenceSnapshot(
 				};
 				return;
 			}
+			candidate.launcherKind = evidence.launcherKind;
 			resolutionCandidates[index] = {
 				candidate,
 				request: {

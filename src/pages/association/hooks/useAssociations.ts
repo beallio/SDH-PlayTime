@@ -1,11 +1,20 @@
-import { useState, useEffect, useCallback } from "react";
-import type { GameAssociation } from "@src/types/association";
+import { useCallback, useEffect, useState } from "react";
+import {
+	refreshCurrentGamePresenceSnapshot,
+	type GamePresenceCandidate,
+} from "@src/app/gamePresence";
 import { useLocator } from "@src/locator";
 import logger from "@src/utils/logger";
+import {
+	buildAssociationListGroups,
+	shouldRefreshAfterAssociationMutation,
+	type AssociationListGroup,
+} from "../associationViewModel";
 
+/** Refreshes status alongside explicit rows while retaining one card per parent component. */
 export const useAssociations = () => {
 	const { associationService } = useLocator();
-	const [associations, setAssociations] = useState<GameAssociation[]>([]);
+	const [groups, setGroups] = useState<AssociationListGroup[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<Error | null>(null);
 
@@ -13,38 +22,58 @@ export const useAssociations = () => {
 		setLoading(true);
 		setError(null);
 		try {
-			const data = await associationService.getAllAssociations();
-			setAssociations(data);
-		} catch (err) {
+			const associations = await associationService.getAllAssociations();
+			let candidates: GamePresenceCandidate[] = [];
+			try {
+				candidates = (await refreshCurrentGamePresenceSnapshot()).candidates;
+			} catch (cause) {
+				logger.error("Failed to refresh association list presence:", cause);
+			}
+			setGroups(buildAssociationListGroups(associations, candidates));
+		} catch (cause) {
 			setError(
-				err instanceof Error ? err : new Error("Failed to load associations"),
+				cause instanceof Error
+					? cause
+					: new Error("Failed to load game associations"),
 			);
-			logger.error("Failed to load associations:", err);
+			logger.error("Failed to load associations:", cause);
 		} finally {
 			setLoading(false);
 		}
 	}, [associationService]);
 
 	useEffect(() => {
-		loadAssociations();
+		void loadAssociations();
 	}, [loadAssociations]);
 
-	const removeAssociation = useCallback(
+	const detachMember = useCallback(
 		async (childGameId: string) => {
-			const result = await associationService.removeAssociation(childGameId);
-			if (result.success) {
+			const result =
+				await associationService.detachAssociationMember(childGameId);
+			if (shouldRefreshAfterAssociationMutation(result))
 				await loadAssociations();
-			}
+			return result;
+		},
+		[associationService, loadAssociations],
+	);
+
+	const dissolveGroup = useCallback(
+		async (anchorGameId: string) => {
+			const result =
+				await associationService.dissolveAssociationComponent(anchorGameId);
+			if (shouldRefreshAfterAssociationMutation(result))
+				await loadAssociations();
 			return result;
 		},
 		[associationService, loadAssociations],
 	);
 
 	return {
-		associations,
+		groups,
 		loading,
 		error,
 		refresh: loadAssociations,
-		removeAssociation,
+		detachMember,
+		dissolveGroup,
 	};
 };

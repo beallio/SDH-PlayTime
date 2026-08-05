@@ -1,77 +1,91 @@
 import {
-	Dropdown,
+	ButtonItem,
+	ConfirmModal,
 	Field,
 	Focusable,
 	PanelSection,
 	PanelSectionRow,
 	showModal,
-	ConfirmModal,
-	ButtonItem,
 } from "@decky/ui";
-import { useState, useMemo } from "react";
+import { useStore } from "@nanostores/react";
 import { PageWrapper } from "@src/components/PageWrapper";
-import { navigateBack } from "./navigation";
+import { AssociationCandidateCard } from "./association/components/AssociationCandidateCard";
 import { useGamesForAssociation } from "./association/hooks/useGamesForAssociation";
-import { useCreateAssociation } from "./association/hooks/useCreateAssociation";
+import { $associationSelectionAnchor, navigateBack } from "./navigation";
+
+function confirmationDescription(
+	summary: NonNullable<
+		ReturnType<typeof useGamesForAssociation>["confirmationSummary"]
+	>,
+) {
+	return [
+		summary.oldParent
+			? `Current confirmed parent: ${summary.oldParent.gameName} (ID: ${summary.oldParent.gameId})`
+			: "Current confirmed parent: none",
+		`Proposed parent: ${summary.proposedParent.gameName} (ID: ${summary.proposedParent.gameId})`,
+		`Affected members: ${summary.selectedMembers
+			.map((member) => `${member.gameName} (ID: ${member.gameId})`)
+			.join(", ")}`,
+		...summary.reasons.map((reason) => `Review reason: ${reason}`),
+		...summary.warnings.map((warning) => `Warning: ${warning}`),
+	].join("\n\n");
+}
 
 export function AssociationAddPage() {
-	const [selectedParentId, setSelectedParentId] = useState<string>("");
-	const [selectedChildId, setSelectedChildId] = useState<string>("");
+	const anchorGameId = useStore($associationSelectionAnchor);
+	const {
+		anchorCards,
+		componentCards,
+		additionCards,
+		snapshot,
+		loading,
+		saving,
+		error,
+		selectedMemberIds,
+		additionMessages,
+		pendingCandidateIds,
+		allMembersSelected,
+		hasEnoughMembers,
+		canConfirm,
+		rankingReasons,
+		confirmationSummary,
+		selectAnchor,
+		selectParent,
+		toggleMember,
+		refresh,
+		confirm,
+	} = useGamesForAssociation(anchorGameId);
 
-	const { games, loading: loadingGames } = useGamesForAssociation();
-	const { createAssociation, loading: saving, error } = useCreateAssociation();
-
-	// Filter games that can be parents
-	const parentOptions = useMemo(
-		() =>
-			games
-				.filter((g) => g.canBeParent)
-				.map((g) => ({
-					label: g.nameWithId,
-					data: g.id,
-				})),
-		[games],
-	);
-
-	// Filter games that can be children (exclude selected parent)
-	const childOptions = useMemo(
-		() =>
-			games
-				.filter((g) => g.canBeChild && g.id !== selectedParentId)
-				.map((g) => ({
-					label: g.nameWithId,
-					data: g.id,
-				})),
-		[games, selectedParentId],
-	);
-
-	const handleSave = async () => {
-		if (!selectedParentId || !selectedChildId) return;
-
-		const result = await createAssociation(selectedParentId, selectedChildId);
-
-		if (result.success) {
-			navigateBack();
-		} else {
-			showModal(
-				<ConfirmModal
-					strTitle="Error"
-					strDescription={
-						result.error?.message ||
-						"Failed to create association. Please try again."
+	const showConfirmation = () => {
+		if (!confirmationSummary) return;
+		showModal(
+			<ConfirmModal
+				strTitle="Confirm game group parent"
+				strDescription={confirmationDescription(confirmationSummary)}
+				onOK={async () => {
+					const result = await confirm();
+					if (result?.success) {
+						navigateBack();
+						return;
 					}
-					bOKDisabled
-				/>,
-			);
-		}
+					if (result && !result.success) {
+						showModal(
+							<ConfirmModal
+								strTitle="Association was not saved"
+								strDescription={result.error.message}
+								bOKDisabled
+							/>,
+						);
+					}
+				}}
+			/>,
+		);
 	};
-
-	const canSave = selectedParentId && selectedChildId && !saving;
 
 	return (
 		<PageWrapper>
 			<Focusable style={{ height: "calc(100% - 40px)", overflow: "scroll" }}>
-				<PanelSection title="Add Game Association">
+				<PanelSection title="Choose Game Group Parent">
 					<PanelSectionRow>
 						<div
 							style={{
@@ -81,61 +95,10 @@ export function AssociationAddPage() {
 								lineHeight: 1.4,
 							}}
 						>
-							Select a parent game and a child game to associate. The child
-							game's playtime will be combined with the parent's in all
-							statistics.
+							Choose an entry to load its explicit identity group. Status labels
+							show what is known now; they do not infer that a shortcut is
+							installed.
 						</div>
-					</PanelSectionRow>
-
-					<PanelSectionRow>
-						<Field label="Parent Game (receives combined playtime)">
-							{loadingGames ? (
-								<div
-									style={{
-										color: "#8b929a",
-										padding: "8px",
-										textAlign: "center",
-									}}
-								>
-									Loading games...
-								</div>
-							) : (
-								<Dropdown
-									rgOptions={parentOptions}
-									selectedOption={selectedParentId}
-									onChange={(option) => {
-										setSelectedParentId(option.data);
-										// Reset child if it equals the new parent
-										if (selectedChildId === option.data) {
-											setSelectedChildId("");
-										}
-									}}
-								/>
-							)}
-						</Field>
-					</PanelSectionRow>
-
-					<PanelSectionRow>
-						<Field label="Child Game (playtime added to parent)">
-							{loadingGames ? (
-								<div
-									style={{
-										color: "#8b929a",
-										padding: "8px",
-										textAlign: "center",
-									}}
-								>
-									Loading games...
-								</div>
-							) : (
-								<Dropdown
-									rgOptions={childOptions}
-									selectedOption={selectedChildId}
-									onChange={(option) => setSelectedChildId(option.data)}
-									disabled={!selectedParentId}
-								/>
-							)}
-						</Field>
 					</PanelSectionRow>
 
 					{error && (
@@ -158,52 +121,188 @@ export function AssociationAddPage() {
 					<PanelSectionRow>
 						<ButtonItem
 							layout="below"
-							disabled={!canSave}
-							onClick={handleSave}
-							// @ts-expect-error Just ignore it bro, everything is ok
-							style={{
-								padding: "12px 16px",
-							}}
+							onClick={() => void refresh()}
+							disabled={loading || saving}
 						>
-							{saving ? "Saving..." : "Create Association"}
+							Refresh status
 						</ButtonItem>
 					</PanelSectionRow>
 
-					<PanelSectionRow>
-						<div
-							style={{
-								padding: "12px",
-								background: "rgba(255, 255, 255, 0.03)",
-								borderRadius: "4px",
-								marginTop: "8px",
-							}}
-						>
+					{loading && !snapshot ? (
+						<PanelSectionRow>
+							<div style={{ color: "#8b929a", padding: "8px" }}>
+								Loading status...
+							</div>
+						</PanelSectionRow>
+					) : !snapshot ? (
+						<PanelSectionRow>
 							<div
 								style={{
-									fontSize: "12px",
-									fontWeight: 600,
-									color: "#dcdedf",
-									marginBottom: "8px",
+									display: "flex",
+									flexDirection: "column",
+									gap: "8px",
+									width: "100%",
 								}}
 							>
-								Association Rules:
+								{anchorCards.map((card) => (
+									<AssociationCandidateCard
+										key={card.id}
+										card={card}
+										onSelectParent={() => selectAnchor(card.id)}
+										primaryActionLabel="Open explicit group"
+									/>
+								))}
 							</div>
-							<ul
-								style={{
-									fontSize: "11px",
-									color: "#8b929a",
-									paddingLeft: "16px",
-									margin: 0,
-									lineHeight: 1.6,
-								}}
-							>
-								<li>One parent can have multiple children</li>
-								<li>A child can only have one parent</li>
-								<li>A child cannot have its own children</li>
-								<li>A parent cannot become a child of another game</li>
-							</ul>
-						</div>
-					</PanelSectionRow>
+						</PanelSectionRow>
+					) : (
+						<>
+							<PanelSectionRow>
+								<Field label="Explicit members">
+									<div
+										style={{
+											fontSize: "11px",
+											color: "#8b929a",
+											padding: "4px 0",
+										}}
+									>
+										Select every member shown by the backend component, then add
+										any eligible singleton entries and choose the proposed
+										parent. Existing component members are always required. A
+										recommendation is convenient only; it is never saved until
+										you confirm it.
+									</div>
+								</Field>
+							</PanelSectionRow>
+							<PanelSectionRow>
+								<div
+									style={{
+										display: "flex",
+										flexDirection: "column",
+										gap: "8px",
+										width: "100%",
+									}}
+								>
+									{componentCards.map((card) => (
+										<AssociationCandidateCard
+											key={card.id}
+											card={card}
+											memberSelected={selectedMemberIds.includes(card.id)}
+											onSelectParent={() => void selectParent(card.id)}
+										/>
+									))}
+								</div>
+							</PanelSectionRow>
+
+							<PanelSectionRow>
+								<Field label="Candidate additions">
+									<div
+										style={{
+											fontSize: "11px",
+											color: "#8b929a",
+											padding: "4px 0",
+										}}
+									>
+										Include one or more entries to create or expand this group.
+										Each candidate is checked against its own explicit component
+										before it can be selected.
+									</div>
+								</Field>
+							</PanelSectionRow>
+							<PanelSectionRow>
+								<div
+									style={{
+										display: "flex",
+										flexDirection: "column",
+										gap: "8px",
+										width: "100%",
+									}}
+								>
+									{additionCards.map((card) => (
+										<AssociationCandidateCard
+											key={card.id}
+											card={card}
+											memberSelected={selectedMemberIds.includes(card.id)}
+											onToggleMember={() => void toggleMember(card.id)}
+											onSelectParent={() => void selectParent(card.id)}
+											membershipMessage={additionMessages[card.id]}
+											checkingEligibility={pendingCandidateIds.includes(card.id)}
+										/>
+									))}
+								</div>
+							</PanelSectionRow>
+
+							{rankingReasons.length > 0 && (
+								<PanelSectionRow>
+									<div
+										style={{
+											color: "#f1c46a",
+											fontSize: "12px",
+											lineHeight: 1.5,
+										}}
+									>
+										{rankingReasons.map((reason) => (
+											<div key={reason}>Review: {reason}</div>
+										))}
+									</div>
+								</PanelSectionRow>
+							)}
+
+							{!allMembersSelected && (
+								<PanelSectionRow>
+									<div style={{ color: "#f1c46a", fontSize: "12px" }}>
+										Every backend member must be included before confirmation.
+									</div>
+								</PanelSectionRow>
+							)}
+
+							{!hasEnoughMembers && (
+								<PanelSectionRow>
+									<div style={{ color: "#f1c46a", fontSize: "12px" }}>
+										Include at least one eligible addition to create a group.
+									</div>
+								</PanelSectionRow>
+							)}
+
+							{confirmationSummary && (
+								<PanelSectionRow>
+									<div
+										style={{
+											padding: "10px",
+											background: "rgba(255, 255, 255, 0.04)",
+											borderRadius: "4px",
+											fontSize: "12px",
+											lineHeight: 1.5,
+										}}
+									>
+										<div>
+											Old parent:{" "}
+											{confirmationSummary.oldParent?.gameName ?? "None"}
+										</div>
+										<div>
+											Proposed parent:{" "}
+											{confirmationSummary.proposedParent.gameName}
+										</div>
+										<div>
+											Affected members:{" "}
+											{confirmationSummary.selectedMembers
+												.map((member) => member.gameName)
+												.join(", ")}
+										</div>
+									</div>
+								</PanelSectionRow>
+							)}
+
+							<PanelSectionRow>
+								<ButtonItem
+									layout="below"
+									disabled={!canConfirm}
+									onClick={showConfirmation}
+								>
+									{saving ? "Saving..." : "Review and confirm parent"}
+								</ButtonItem>
+							</PanelSectionRow>
+						</>
+					)}
 				</PanelSection>
 			</Focusable>
 		</PageWrapper>
