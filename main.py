@@ -33,10 +33,12 @@ from py_modules.schemas.request import (
     AddGameChecksumDict,
     AddTimeDict,
     ApplyManualTimeCorrectionDict,
+    AssociationComponentConfirmationRequest,
     DailyStatisticsForPeriodDict,
     GetFileSHA256DTO,
     GetGameDTO,
     HasDataBeforeDict,
+    MAX_ASSOCIATION_GAME_ID_LENGTH,
     RemoveAllGameChecksumsDTO,
     RemoveGameChecksumDTO,
 )
@@ -56,6 +58,14 @@ from py_modules.association_manager import AssociationManager
 
 # pylint: enable=wrong-import-order, wrong-import-position
 # autopep8: on
+
+
+def _is_bounded_association_game_id(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and len(value) <= MAX_ASSOCIATION_GAME_ID_LENGTH
+    )
 
 
 class Plugin:
@@ -517,6 +527,133 @@ class Plugin:
         except Exception as e:
             decky.logger.exception(
                 "[create_game_association] Unhandled exception: %s", e
+            )
+            raise
+
+    async def get_game_association_component(self, anchor_game_id: str):
+        """Read one checksum/association component for an explicit confirmation."""
+        try:
+            self._ensure_services_initialized()
+            if not _is_bounded_association_game_id(anchor_game_id):
+                return {
+                    "success": False,
+                    "error": {
+                        "code": "INVALID_REQUEST",
+                        "message": "anchor_game_id must be a non-empty string",
+                    },
+                }
+            outcome = self.association_manager.get_association_component(anchor_game_id)
+            if outcome.error:
+                return {
+                    "success": False,
+                    "error": convert_keys_to_camel_case(outcome.error.to_dict()),
+                }
+            if outcome.snapshot is None:
+                return {
+                    "success": False,
+                    "error": {
+                        "code": "ASSOCIATION_UPDATE_FAILED",
+                        "message": "The association component could not be read.",
+                    },
+                }
+            return {
+                "success": True,
+                "data": convert_keys_to_camel_case(outcome.snapshot.to_dict()),
+            }
+        except Exception as e:
+            decky.logger.exception(
+                "[get_game_association_component] Unhandled exception: %s", e
+            )
+            raise
+
+    async def confirm_game_association_component(self, dto_dict: object):
+        """Atomically validate and confirm one complete association component."""
+        try:
+            self._ensure_services_initialized()
+            try:
+                request = AssociationComponentConfirmationRequest.from_dict(dto_dict)
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": {
+                        "code": "INVALID_REQUEST",
+                        "message": "Invalid association component confirmation request.",
+                    },
+                }
+
+            outcome = self.association_manager.confirm_association_component(request)
+            if outcome.error:
+                return {
+                    "success": False,
+                    "error": convert_keys_to_camel_case(outcome.error.to_dict()),
+                }
+            if outcome.confirmation is None:
+                return {
+                    "success": False,
+                    "error": {
+                        "code": "ASSOCIATION_UPDATE_FAILED",
+                        "message": "The association component could not be confirmed.",
+                    },
+                }
+            return {
+                "success": True,
+                "data": convert_keys_to_camel_case(outcome.confirmation.to_dict()),
+            }
+        except Exception as e:
+            decky.logger.exception(
+                "[confirm_game_association_component] Unhandled exception: %s", e
+            )
+            raise
+
+    async def detach_game_association_member(self, child_game_id: str):
+        """Detach a child association while retaining its playtime history."""
+        try:
+            self._ensure_services_initialized()
+            if not _is_bounded_association_game_id(child_game_id):
+                return {
+                    "success": False,
+                    "error": {
+                        "code": "INVALID_REQUEST",
+                        "message": "child_game_id must be a non-empty string",
+                    },
+                }
+            error = self.association_manager.detach_association_member(child_game_id)
+            if error:
+                return {
+                    "success": False,
+                    "error": convert_keys_to_camel_case(error.to_dict()),
+                }
+            return {"success": True}
+        except Exception as e:
+            decky.logger.exception(
+                "[detach_game_association_member] Unhandled exception: %s", e
+            )
+            raise
+
+    async def dissolve_game_association_component(self, anchor_game_id: str):
+        """Dissolve every explicit association edge in one logical component."""
+        try:
+            self._ensure_services_initialized()
+            if not _is_bounded_association_game_id(anchor_game_id):
+                return {
+                    "success": False,
+                    "error": {
+                        "code": "INVALID_REQUEST",
+                        "message": "anchor_game_id must be a non-empty string",
+                    },
+                }
+            error = self.association_manager.dissolve_association_component(
+                anchor_game_id
+            )
+            if error:
+                return {
+                    "success": False,
+                    "error": convert_keys_to_camel_case(error.to_dict()),
+                }
+            return {"success": True}
+        except Exception as e:
+            decky.logger.exception(
+                "[dissolve_game_association_component] Unhandled exception: %s", e
             )
             raise
 

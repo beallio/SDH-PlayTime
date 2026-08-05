@@ -3,6 +3,10 @@ from datetime import datetime
 from py_modules.db.dao import Dao
 from py_modules.db.migration import DbMigration
 from py_modules.association_manager import AssociationManager
+from py_modules.schemas.request import (
+    AssociationComponentConfirmationRequest,
+    AssociationComponentMember,
+)
 from py_modules.tests.helpers import AbstractDatabaseTest
 
 
@@ -25,6 +29,126 @@ class TestAssociationManager(AbstractDatabaseTest):
             game_id=game_id,
             source=None,
         )
+
+    def _create_checksum_component(self) -> None:
+        for game_id in ("alpha", "beta", "gamma"):
+            self._create_game(game_id, game_id.title())
+            self.dao.save_game_checksum(game_id, "shared", "SHA256", 1, None, None)
+        self.dao.create_game_association("alpha", "beta")
+        self.dao.create_game_association("alpha", "gamma")
+
+    def _confirmation_request(self, anchor_game_id: str, proposed_parent_game_id: str):
+        outcome = self.association_manager.get_association_component(anchor_game_id)
+        self.assertIsNone(outcome.error)
+        self.assertIsNotNone(outcome.snapshot)
+        snapshot = outcome.snapshot
+        return AssociationComponentConfirmationRequest(
+            anchor_game_id=anchor_game_id,
+            proposed_parent_game_id=proposed_parent_game_id,
+            proposed_parent_game_name=proposed_parent_game_id.title(),
+            expected_parent_game_id=snapshot.expected_parent_game_id,
+            expected_fingerprint=snapshot.fingerprint,
+            selected_members=tuple(
+                AssociationComponentMember(game_id=game_id, game_name=game_id.title())
+                for game_id in ("alpha", "beta", "gamma")
+            ),
+        )
+
+    def test_confirmation_switches_a_checksum_component_to_the_selected_parent(self):
+        self._create_checksum_component()
+
+        result = self.association_manager.confirm_association_component(
+            self._confirmation_request("gamma", "beta")
+        )
+
+        self.assertIsNone(result.error)
+        self.assertIsNotNone(result.confirmation)
+        self.assertEqual(result.confirmation.confirmed_parent.id, "beta")
+        self.assertEqual(
+            {
+                (association["parent_game_id"], association["child_game_id"])
+                for association in self.association_manager.get_all_associations()
+            },
+            {("beta", "alpha"), ("beta", "gamma")},
+        )
+        components = self.dao.get_game_identity_components()
+        self.assertTrue(
+            all(
+                components[game_id].canonical_id == "beta"
+                for game_id in ("alpha", "beta", "gamma")
+            )
+        )
+
+    def test_conflicted_component_requires_full_explicit_confirmation(self):
+        for game_id in ("alpha", "beta", "parent_a", "parent_b"):
+            self._create_game(game_id, game_id.title())
+        for game_id in ("alpha", "beta"):
+            self.dao.save_game_checksum(game_id, "shared", "SHA256", 1, None, None)
+        self.dao.create_game_association("parent_a", "alpha")
+        self.dao.create_game_association("parent_b", "beta")
+        outcome = self.association_manager.get_association_component("alpha")
+        self.assertIsNone(outcome.error)
+        self.assertIsNotNone(outcome.snapshot)
+        snapshot = outcome.snapshot
+        request = AssociationComponentConfirmationRequest(
+            anchor_game_id="alpha",
+            proposed_parent_game_id="parent_a",
+            proposed_parent_game_name="Parent A",
+            expected_parent_game_id=None,
+            expected_fingerprint=snapshot.fingerprint,
+            selected_members=(
+                AssociationComponentMember("alpha", "Alpha"),
+                AssociationComponentMember("parent_a", "Parent A"),
+            ),
+        )
+
+        result = self.association_manager.confirm_association_component(request)
+
+        self.assertIsNotNone(result.error)
+        self.assertEqual(result.error.code, "COMPONENT_CONFLICT")
+
+        full_request = AssociationComponentConfirmationRequest(
+            anchor_game_id="alpha",
+            proposed_parent_game_id="parent_a",
+            proposed_parent_game_name="Parent A",
+            expected_parent_game_id=None,
+            expected_fingerprint=snapshot.fingerprint,
+            selected_members=tuple(
+                AssociationComponentMember(game_id, game_id.replace("_", " ").title())
+                for game_id in ("alpha", "beta", "parent_a", "parent_b")
+            ),
+        )
+
+        resolved = self.association_manager.confirm_association_component(full_request)
+
+        self.assertIsNone(resolved.error)
+        self.assertEqual(
+            {
+                (association["parent_game_id"], association["child_game_id"])
+                for association in self.association_manager.get_all_associations()
+            },
+            {
+                ("parent_a", "alpha"),
+                ("parent_a", "beta"),
+                ("parent_a", "parent_b"),
+            },
+        )
+
+    def test_detach_keeps_playtime_and_dissolve_removes_the_remaining_star(self):
+        self._create_checksum_component()
+
+        parent_error = self.association_manager.detach_association_member("alpha")
+        detach_error = self.association_manager.detach_association_member("gamma")
+        dissolve_error = self.association_manager.dissolve_association_component(
+            "alpha"
+        )
+
+        self.assertIsNotNone(parent_error)
+        self.assertEqual(parent_error.code, "PARENT_REQUIRES_CONFIRMATION")
+        self.assertIsNone(detach_error)
+        self.assertIsNone(dissolve_error)
+        self.assertEqual(self.association_manager.get_all_associations(), [])
+        self.assertEqual(self.dao.get_combined_playtime_for_game("gamma"), 3600)
 
     # ========== create_association tests ==========
 
