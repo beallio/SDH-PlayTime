@@ -1,4 +1,4 @@
-import { routerHook, toaster } from "@decky/api";
+import { routerHook, toaster } from "@src/utils/deckyApi";
 import { definePlugin, findSP, staticClasses, useParams } from "@decky/ui";
 import { patchAppPage } from "@src/steam/ui/routePatches";
 import { SteamPlayTimePatches } from "@src/steam/ui/steamPlayTimePatches";

@@ -1,4 +1,4 @@
-import { routerHook } from "@decky/api";
+import { routerHook } from "@src/utils/deckyApi";
 import { afterPatch } from "@decky/ui";
 import type { Cache } from "@src/app/cache";
 import type { Mountable } from "@src/app/system";

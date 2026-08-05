@@ -159,7 +159,9 @@ export class Backend {
 		);
 	}
 
-	public static async getAssociationCandidates(): Promise<AssociationCandidate[]> {
+	public static async getAssociationCandidates(): Promise<
+		AssociationCandidate[]
+	> {
 		return await call<[], AssociationCandidate[]>(
 			BACK_END_API.GET_ASSOCIATION_CANDIDATES,
 		);

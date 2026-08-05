@@ -225,7 +225,9 @@ export function AssociationAddPage() {
 											onToggleMember={() => void toggleMember(card.id)}
 											onSelectParent={() => void selectParent(card.id)}
 											membershipMessage={additionMessages[card.id]}
-											checkingEligibility={pendingCandidateIds.includes(card.id)}
+											checkingEligibility={pendingCandidateIds.includes(
+												card.id,
+											)}
 										/>
 									))}
 								</div>

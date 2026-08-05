@@ -238,12 +238,7 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 
 	const confirm =
 		useCallback(async (): Promise<AssociationComponentConfirmationResult | null> => {
-			if (
-				!snapshot ||
-				!selectedParentId ||
-				!canConfirm
-			)
-				return null;
+			if (!snapshot || !selectedParentId || !canConfirm) return null;
 			const summary = buildAssociationConfirmationSummary({
 				snapshot,
 				candidates: selectedCandidates,
@@ -282,12 +277,7 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 		]);
 
 	const confirmationSummary = useMemo(() => {
-		if (
-			!snapshot ||
-			!selectedParentId ||
-			!canConfirm
-		)
-			return null;
+		if (!snapshot || !selectedParentId || !canConfirm) return null;
 		return buildAssociationConfirmationSummary({
 			snapshot,
 			candidates: selectedCandidates,

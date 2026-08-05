@@ -85,7 +85,9 @@ describe("getPathToGame compatibility", () => {
 	]) {
 		test(`sends safe direct candidates to the backend proof boundary: ${executable}`, async () => {
 			setShortcutDetails({
-				strShortcutExe: executable.includes(" ") ? `"${executable}"` : executable,
+				strShortcutExe: executable.includes(" ")
+					? `"${executable}"`
+					: executable,
 			});
 			callHandler = async () => ({
 				results: [

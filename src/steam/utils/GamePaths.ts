@@ -460,7 +460,10 @@ function optionWithOperand(
 	return;
 }
 
-function isMissingOptionOperand(option: string, operand: string | undefined): boolean {
+function isMissingOptionOperand(
+	option: string,
+	operand: string | undefined,
+): boolean {
 	return (
 		!operand ||
 		(!OPTIONS_PERMITTING_OPTION_LIKE_OPERANDS.has(option) &&
@@ -530,10 +533,7 @@ function hasUnexpectedCommandTail(
 				continue;
 			}
 		}
-		if (
-			isAbsoluteCommandPath(token) &&
-			!allowsPositionalAbsolutePath(token)
-		) {
+		if (isAbsoluteCommandPath(token) && !allowsPositionalAbsolutePath(token)) {
 			return true;
 		}
 	}
@@ -1044,7 +1044,9 @@ async function getGameResolutionRequest(applicationId: number) {
 
 export async function getPathToGame(applicationId: number) {
 	const request = await getGameResolutionRequest(applicationId);
-	const resolvedPayload = request ? await resolvePayloadPath(request) : undefined;
+	const resolvedPayload = request
+		? await resolvePayloadPath(request)
+		: undefined;
 	if (!resolvedPayload) {
 		logger.debug("Unsupported non-Steam game payload.");
 	}

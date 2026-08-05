@@ -21,7 +21,10 @@ const snapshot: AssociationComponentSnapshot = {
 
 function presence(
 	availability: "running" | "reachable",
-	candidates = [candidate("anchor", "reachable"), candidate("candidate", availability)],
+	candidates = [
+		candidate("anchor", "reachable"),
+		candidate("candidate", availability),
+	],
 ): GamePresenceSnapshot {
 	return {
 		inventories: {
@@ -119,7 +122,9 @@ describe("association selection controller", () => {
 			]),
 		});
 
-		await controller.selectParent("candidate", async () => component("candidate"));
+		await controller.selectParent("candidate", async () =>
+			component("candidate"),
+		);
 		await controller.toggleMember("running", async () => component("running"));
 
 		expect(controller.getState()).toMatchObject({
@@ -185,7 +190,9 @@ describe("association selection controller", () => {
 			pendingCandidateIds: ["addition"],
 			canConfirm: false,
 		});
-		await controller.toggleMember("addition", async () => component("addition"));
+		await controller.toggleMember("addition", async () =>
+			component("addition"),
+		);
 		pending.resolve(component("addition"));
 		await include;
 

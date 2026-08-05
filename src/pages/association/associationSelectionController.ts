@@ -82,7 +82,9 @@ export function createAssociationSelectionController({
 	onRefreshRequested,
 }: AssociationSelectionControllerOptions) {
 	let presence = initialPresence;
-	let selectedMemberIds = snapshot.existingMembers.map((member) => member.gameId);
+	let selectedMemberIds = snapshot.existingMembers.map(
+		(member) => member.gameId,
+	);
 	let selectedParentId: string | null = null;
 	let parentSelectionKind: AssociationSelectionState["parentSelectionKind"] =
 		snapshot.expectedParentGameId ? "confirmed" : "advisory";
@@ -116,7 +118,9 @@ export function createAssociationSelectionController({
 		const selectedIds = new Set(selectedMemberIds);
 		return [
 			...componentCandidates(),
-			...additionCandidates().filter((candidate) => selectedIds.has(candidate.id)),
+			...additionCandidates().filter((candidate) =>
+				selectedIds.has(candidate.id),
+			),
 		];
 	}
 
@@ -272,8 +276,12 @@ export function createAssociationSelectionController({
 			};
 		}
 		if (!result.success) {
-			if (result.error.code === "ANCHOR_NOT_FOUND") return { action: "add" as const };
-			return { action: "reject" as const, message: ADDITION_VERIFICATION_ERROR };
+			if (result.error.code === "ANCHOR_NOT_FOUND")
+				return { action: "add" as const };
+			return {
+				action: "reject" as const,
+				message: ADDITION_VERIFICATION_ERROR,
+			};
 		}
 		return getAssociationAdditionDecision({
 			loadedSnapshot: snapshot,
@@ -345,12 +353,14 @@ export function createAssociationSelectionController({
 	}
 
 	async function toggleMember(gameId: string, checkAddition: CheckAddition) {
-		if (disposed || snapshot.existingMembers.some((member) => member.gameId === gameId))
+		if (
+			disposed ||
+			snapshot.existingMembers.some((member) => member.gameId === gameId)
+		)
 			return false;
 		if (pendingCandidateOperations.has(gameId)) {
 			invalidateCandidateOperation(gameId);
-			if (pendingParentCandidate?.id === gameId)
-				pendingParentCandidate = null;
+			if (pendingParentCandidate?.id === gameId) pendingParentCandidate = null;
 			return false;
 		}
 		if (selectedMemberIds.includes(gameId)) {
@@ -370,7 +380,10 @@ export function createAssociationSelectionController({
 			return true;
 		}
 		const expectedCandidateOperation = nextCandidateOperation + 1;
-		pendingParentCandidate = { id: gameId, operation: expectedCandidateOperation };
+		pendingParentCandidate = {
+			id: gameId,
+			operation: expectedCandidateOperation,
+		};
 		const added = await ensureAddition(
 			gameId,
 			checkAddition,
@@ -416,7 +429,10 @@ export function getInitialAssociationComponentSelection(
 	snapshot: AssociationComponentSnapshot,
 	presence: GamePresenceSnapshot | null,
 ) {
-	const state = createAssociationSelectionController({ snapshot, presence }).getState();
+	const state = createAssociationSelectionController({
+		snapshot,
+		presence,
+	}).getState();
 	return {
 		selectedMemberIds: state.selectedMemberIds,
 		selectedParentId: state.selectedParentId,
