@@ -36,8 +36,6 @@ const WRAPPER_SUFFIXES = [".desktop", ".py", ".sh"];
 
 const DIRECT_PAYLOAD_SUFFIXES = [".exe", ".x86", ".x86_64"];
 
-const EXECUTABLE_TOKEN_SUFFIXES = [...DIRECT_PAYLOAD_SUFFIXES, ".appimage"];
-
 const KNOWN_LAUNCHER_STEMS = new Set([
 	"bottles",
 	"cartridges",
@@ -125,8 +123,7 @@ const EMULATOR_OPTIONS_WITH_OPERANDS = new Set([
 	"-L",
 ]);
 
-const KNOWN_OPTIONS_WITH_OPERANDS = new Set([
-	...EMULATOR_OPTIONS_WITH_OPERANDS,
+const BOTTLES_OPTIONS_WITH_OPERANDS = [
 	"-b",
 	"--bottle",
 	"-p",
@@ -136,7 +133,16 @@ const KNOWN_OPTIONS_WITH_OPERANDS = new Set([
 	"--program-id",
 	"-e",
 	"--executable",
+] as const;
+
+const KNOWN_OPTIONS_WITH_OPERANDS = new Set([
+	...EMULATOR_OPTIONS_WITH_OPERANDS,
+	...BOTTLES_OPTIONS_WITH_OPERANDS,
 ]);
+
+const OPTIONS_PERMITTING_OPTION_LIKE_OPERANDS = new Set<string>();
+
+const SHELL_SEPARATOR_TOKENS = new Set(["&&", "&", "||", "|", ";"]);
 
 interface ParsedTokens {
 	tokens: string[];
@@ -146,6 +152,12 @@ interface ParsedTokens {
 interface UniqueValue {
 	value?: string;
 	isAmbiguous: boolean;
+}
+
+interface CommandStructure {
+	allowsPositionalAbsolutePath?: (token: string) => boolean;
+	operandOptions?: readonly string[];
+	flagOptions?: readonly string[];
 }
 
 function normalizeText(value: string | null | undefined): string | undefined {
@@ -281,7 +293,7 @@ function launcherStem(path: string | undefined): string | undefined {
 	return name
 		.replace(/\.(?:appimage|exe|x86|x86_64)$/, "")
 		.replace(
-			/(?:[-_.](?:\d+(?:[._-]\d+)*|x86_64|x64|x86|qt|release(?:ltcg)?|ltcg|linux|win(?:32|64)?))+$/i,
+			/(?:[-_.](?:\d+(?:[._-]\d+)*|alpha|beta|canary|dev|nightly|preview|rc\d*|stable|x86_64|x64|x86|qt|release(?:ltcg)?|ltcg|linux|win(?:32|64)?))+$/i,
 			"",
 		);
 }
@@ -394,32 +406,120 @@ function isRomPath(token: string): boolean {
 	);
 }
 
-function isExecutableToken(token: string): boolean {
-	const lowercaseToken = token.toLowerCase();
+function isAbsoluteCommandPath(token: string): boolean {
+	return token.startsWith("/") || /^[a-z]:[\\/]/i.test(token);
+}
+
+function isShellSeparatorToken(token: string): boolean {
+	return SHELL_SEPARATOR_TOKENS.has(token);
+}
+
+function knownOptionWithOperand(
+	token: string,
+	additionalOptionsWithOperands: readonly string[] = [],
+	optionsWithoutOperands: readonly string[] = [],
+): string | undefined {
+	if (optionsWithoutOperands.includes(token)) {
+		return;
+	}
+	for (const option of [
+		...KNOWN_OPTIONS_WITH_OPERANDS,
+		...additionalOptionsWithOperands,
+	]) {
+		if (token === option || token.startsWith(`${option}=`)) {
+			return option;
+		}
+	}
+	return;
+}
+
+function optionWithOperand(
+	token: string,
+	optionsWithOperands: readonly string[],
+): string | undefined {
+	for (const option of optionsWithOperands) {
+		if (token === option || token.startsWith(`${option}=`)) {
+			return option;
+		}
+	}
+	return;
+}
+
+function isMissingOptionOperand(option: string, operand: string | undefined): boolean {
 	return (
-		(token.startsWith("/") || /^[a-z]:[\\/]/i.test(token)) &&
-		EXECUTABLE_TOKEN_SUFFIXES.some((suffix) => lowercaseToken.endsWith(suffix))
+		!operand ||
+		(!OPTIONS_PERMITTING_OPTION_LIKE_OPERANDS.has(option) &&
+			(operand === "--" ||
+				operand.startsWith("-") ||
+				isShellSeparatorToken(operand)))
 	);
 }
 
-function hasMissingKnownOptionOperand(tokens: string[]): boolean {
+function hasMissingKnownOptionOperand(
+	tokens: string[],
+	additionalOptionsWithOperands: readonly string[] = [],
+	optionsWithoutOperands: readonly string[] = [],
+): boolean {
 	for (let index = 0; index < tokens.length; index++) {
 		const token = tokens[index];
-		for (const option of KNOWN_OPTIONS_WITH_OPERANDS) {
-			if (token === option) {
-				const operand = tokens[index + 1];
-				if (!operand || operand === "--") {
-					return true;
-				}
-				index++;
-				break;
-			}
-			if (
-				token.startsWith(`${option}=`) &&
-				!stripNestedQuotes(token.slice(option.length + 1))
-			) {
+		if (token === "--") {
+			break;
+		}
+		const option = knownOptionWithOperand(
+			token,
+			additionalOptionsWithOperands,
+			optionsWithoutOperands,
+		);
+		if (!option) {
+			continue;
+		}
+
+		if (token === option) {
+			if (isMissingOptionOperand(option, tokens[index + 1])) {
 				return true;
 			}
+			index++;
+		} else if (
+			isMissingOptionOperand(
+				option,
+				stripNestedQuotes(token.slice(option.length + 1)),
+			)
+		) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function hasUnexpectedCommandTail(
+	tokens: string[],
+	allowsPositionalAbsolutePath: (token: string) => boolean,
+	operandOptions: readonly string[] = [],
+): boolean {
+	let afterSeparator = false;
+	for (let index = 0; index < tokens.length; index++) {
+		const token = tokens[index];
+		if (token === "--") {
+			afterSeparator = true;
+			continue;
+		}
+		if (isShellSeparatorToken(token)) {
+			return true;
+		}
+		if (!afterSeparator) {
+			const option = optionWithOperand(token, operandOptions);
+			if (option) {
+				if (token === option) {
+					index++;
+				}
+				continue;
+			}
+		}
+		if (
+			isAbsoluteCommandPath(token) &&
+			!allowsPositionalAbsolutePath(token)
+		) {
+			return true;
 		}
 	}
 	return false;
@@ -427,11 +527,24 @@ function hasMissingKnownOptionOperand(tokens: string[]): boolean {
 
 function isStructurallyCompleteCommand(
 	normalized: NormalizedShortcutFields,
+	structure: CommandStructure = {},
 ): boolean {
+	const allowsPositionalAbsolutePath =
+		structure.allowsPositionalAbsolutePath ?? (() => false);
+	const operandOptions = structure.operandOptions ?? [];
+	const flagOptions = structure.flagOptions ?? [];
 	return (
 		normalized.executableTokens.length === 1 &&
-		!normalized.launchOptionTokens.some(isExecutableToken) &&
-		!hasMissingKnownOptionOperand(normalized.launchOptionTokens)
+		!hasMissingKnownOptionOperand(
+			normalized.launchOptionTokens,
+			operandOptions,
+			flagOptions,
+		) &&
+		!hasUnexpectedCommandTail(
+			normalized.launchOptionTokens,
+			allowsPositionalAbsolutePath,
+			operandOptions,
+		)
 	);
 }
 
@@ -645,7 +758,11 @@ function classifyBottles(
 	if (!isBottlesLauncher) {
 		return;
 	}
-	if (!isStructurallyCompleteCommand(normalized)) {
+	if (
+		!isStructurallyCompleteCommand(normalized, {
+			operandOptions: BOTTLES_OPTIONS_WITH_OPERANDS,
+		})
+	) {
 		return ambiguous("bottles");
 	}
 
@@ -708,7 +825,17 @@ function classifyEmudeck(
 	if (!grammar) {
 		return;
 	}
-	if (!isStructurallyCompleteCommand(normalized)) {
+	if (
+		!isStructurallyCompleteCommand(normalized, {
+			allowsPositionalAbsolutePath: (token) =>
+				grammar.positionalRom && isRomPath(token),
+			operandOptions: [
+				...EMULATOR_OPTIONS_WITH_OPERANDS,
+				...grammar.romOptions,
+			],
+			flagOptions: grammar.flagOptions,
+		})
+	) {
 		return ambiguous("emudeck-srm");
 	}
 

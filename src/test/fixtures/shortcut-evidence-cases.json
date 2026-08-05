@@ -519,6 +519,38 @@
 			}
 		},
 		{
+			"id": "channel-suffixed-ubisoft-connect-executable-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/UbisoftConnect-beta.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "channel-suffixed-duckstation-executable-is-not-a-direct-payload",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "b17ba44dbd87535bd72a0e80b76d03329b61c99e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/.local/bin/DuckStation-preview.exe"
+			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
+		{
 			"id": "suffix-bearing-symlink-shape-is-not-checksum-eligible-without-filesystem-evidence",
 			"source": {
 				"repository": "0u73r-h34v3n/SDH-PlayTime",
@@ -613,6 +645,40 @@
 			"input": {
 				"strShortcutExe": "/opt/Heroic/heroic",
 				"strShortcutLaunchOptions": "heroic://launch?appName=space-game /home/deck/Games/Second.exe"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "heroic-shell-separator-and-extensionless-command-are-ambiguous",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/opt/Heroic/heroic",
+				"strShortcutLaunchOptions": "heroic://launch?appName=space-game && /usr/bin/other"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "heroic-foreign-option-does-not-authorize-an-extensionless-command",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/opt/Heroic/heroic",
+				"strShortcutLaunchOptions": "heroic://launch?appName=space-game --program /usr/bin/other"
 			},
 			"expected": {
 				"status": "ambiguous",
@@ -787,6 +853,23 @@
 			}
 		},
 		{
+			"id": "lutris-extensionless-secondary-command-is-ambiguous",
+			"source": {
+				"repository": "lutris/lutris",
+				"commit": "6538669bb384b5c7df5dbcb7aeed21c82b26b447",
+				"path": "lutris/gui/application.py"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/lutris",
+				"strShortcutLaunchOptions": "lutris:rungameid/42 /usr/bin/other"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "lutris",
+				"externalIdentityHints": {}
+			}
+		},
+		{
 			"id": "bottles-native-program-with-spaces",
 			"source": {
 				"repository": "bottlesdevs/Bottles",
@@ -825,6 +908,44 @@
 					"bottlesBottle": "Games",
 					"bottlesExecutable": "C:\\Games\\Game.exe"
 				}
+			}
+		},
+		{
+			"id": "bottles-flatpak-separated-executable-option",
+			"source": {
+				"repository": "bottlesdevs/Bottles",
+				"commit": "214e4afc33753cfc8bb6b447a19c8593c2a54322",
+				"path": "bottles/frontend/cli/cli.py"
+			},
+			"input": {
+				"strFlatpakAppID": "com.usebottles.bottles",
+				"strShortcutExe": "/usr/bin/flatpak",
+				"strShortcutLaunchOptions": "run com.usebottles.bottles bottles-cli run --bottle Games --executable \"C:\\\\Games\\\\Game.exe\""
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "bottles",
+				"externalIdentityHints": {
+					"bottlesBottle": "Games",
+					"bottlesExecutable": "C:\\Games\\Game.exe"
+				}
+			}
+		},
+		{
+			"id": "bottles-extensionless-secondary-command-is-ambiguous",
+			"source": {
+				"repository": "bottlesdevs/Bottles",
+				"commit": "214e4afc33753cfc8bb6b447a19c8593c2a54322",
+				"path": "bottles/frontend/cli/cli.py"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/bottles-cli",
+				"strShortcutLaunchOptions": "run --bottle Games --program Game /usr/bin/other"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "bottles",
+				"externalIdentityHints": {}
 			}
 		},
 		{
@@ -1102,6 +1223,57 @@
 			"input": {
 				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
 				"strShortcutLaunchOptions": "-f \"/home/deck/!(ROM Archive)/Game.gba\""
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-config-followed-by-an-option-is-ambiguous",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f /home/deck/ROMs/Game.gba --config --verbose"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-config-followed-by-a-separator-is-ambiguous",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f /home/deck/ROMs/Game.gba --config &&"
+			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "emudeck-srm",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "emudeck-extensionless-secondary-command-is-ambiguous",
+			"source": {
+				"repository": "dragoonDorise/EmuDeck",
+				"commit": "fd39d989ee0c4fb1a638e0ab1afd38c8f9837cfd",
+				"path": "tools/launchers/mgba.sh"
+			},
+			"input": {
+				"strShortcutExe": "/home/deck/Emulation/tools/launchers/mgba.sh",
+				"strShortcutLaunchOptions": "-f /home/deck/ROMs/Game.gba /usr/bin/other"
 			},
 			"expected": {
 				"status": "ambiguous",
