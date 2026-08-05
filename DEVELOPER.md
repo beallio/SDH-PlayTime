@@ -20,17 +20,19 @@ The table is the support boundary. A checked fixture is evidence for the listed 
 not a blanket guarantee for a launcher family. Custom roots and variants not represented
 by these fixtures remain `unknown` until they complete the extension procedure below.
 
-| Resolver path | Verified shapes | Fixture and focused test | Verified repository commits |
-| --- | --- | --- | --- |
-| Direct | Direct Linux executable, AppImage, or Windows executable; external-drive disconnect/reconnect; regular-file proof | `src/test/utils/steam/shortcutEvidenceClassifier.spec.ts`, `py_modules/tests/game_resolution_test.py`, `py_modules/tests/game_checksum_test.py` | `843740b29f4839564d1b1569849f306682b74f53` (direct resolver); `ddefdae2c2327a3b5c8c2f9af74dc71dd4989b3f` and `b1da6628e06679e3ae1b69bed1d91171122f595e` (hardening) |
-| Heroic native | Legendary, GOG, Nile, and sideload metadata reached from the native Heroic config root | `py_modules/tests/fixtures/heroic_game_resolution.json`, `py_modules/tests/heroic_game_resolution_test.py` | `513c69c7339e55ea77297b23a31771099297209e` (adapter); `708771369ca5d0c2622b64fe205d0a5e767c3114` and `6d5203178d56a6b90b31351e063cb2250002d579` (metadata hardening) |
-| Heroic Flatpak | Recognized `com.heroicgameslauncher.hgl` shortcut with coherent Heroic URI and Flatpak config root | `py_modules/tests/fixtures/heroic_game_resolution.json`, `py_modules/tests/heroic_game_resolution_test.py` | `513c69c7339e55ea77297b23a31771099297209e`; `6d5203178d56a6b90b31351e063cb2250002d579` |
-| Unsupported | Lutris, Bottles, EmuDeck/Steam ROM Manager, ambiguous wrappers, custom roots, or any unverified variant | `src/test/utils/steam/shortcutEvidenceClassifier.spec.ts`, `src/test/utils/steam/getPathToGame.spec.ts` | Fail-closed boundary retained by the commits above |
+| Resolver path | Verified shapes | Fixture and focused test | Fixture provenance | Local fence commits |
+| --- | --- | --- | --- | --- |
+| Direct | Direct Linux executable, AppImage, or Windows executable; external-drive disconnect/reconnect; regular-file proof | `py_modules/tests/fixtures/direct_game_resolution.json`, `py_modules/tests/game_parent_integration_test.py`, `py_modules/tests/game_resolution_test.py` | Local protocol fixture: direct resolution has no launcher metadata source and is proved only from bounded shortcut evidence plus a regular file. | `843740b29f4839564d1b1569849f306682b74f53` (resolver); `ddefdae2c2327a3b5c8c2f9af74dc71dd4989b3f`, `b1da6628e06679e3ae1b69bed1d91171122f595e` (hardening) |
+| Heroic native | Source-backed Legendary and sideload metadata from the native Heroic config root | `py_modules/tests/fixtures/heroic_game_resolution.json`, `py_modules/tests/game_parent_integration_test.py`, `py_modules/tests/heroic_game_resolution_test.py` | `Heroic-Games-Launcher/HeroicGamesLauncher@d6366b34084be43369f24ff04a50dab39ce5a454` | `513c69c7339e55ea77297b23a31771099297209e` (adapter); `708771369ca5d0c2622b64fe205d0a5e767c3114`, `6d5203178d56a6b90b31351e063cb2250002d579` (hardening) |
+| Heroic Flatpak | Recognized `com.heroicgameslauncher.hgl` shortcut with the source-backed legacy Legendary URI and Flatpak config root | `py_modules/tests/fixtures/heroic_game_resolution.json`, `py_modules/tests/heroic_game_resolution_test.py` | `Heroic-Games-Launcher/HeroicGamesLauncher@d6366b34084be43369f24ff04a50dab39ce5a454` | `513c69c7339e55ea77297b23a31771099297209e`; `6d5203178d56a6b90b31351e063cb2250002d579` |
+| Heroic GOG or Nile | No source-addressable positive fixture in this release; treat as `unknown` | Negative coverage in `py_modules/tests/heroic_game_resolution_test.py` | None; adding support requires the deferred-adapter procedure below. | Fail-closed boundary retained by the commits above |
+| Unsupported | Lutris, Bottles, EmuDeck/Steam ROM Manager, ambiguous wrappers, custom roots, or any unverified variant | `src/test/utils/steam/shortcutEvidenceClassifier.spec.ts`, `src/test/utils/steam/getPathToGame.spec.ts` | Not applicable; these paths are deliberately unsupported. | Fail-closed boundary retained by the commits above |
 
-The commit IDs are the verified repository inclusion points for the checked fixture
-behavior. When upstream sourcing is required for a change, record the upstream commit
-or release identifier alongside the new fixture; do not substitute a launcher name or
-an unverified current installation for that evidence.
+The fixture-provenance column is the evidence for a launcher claim. Local commits record
+the implementation fences only; they are not upstream fixture provenance. When upstream
+sourcing is required for a change, record the upstream commit or release identifier
+alongside the new fixture; do not substitute a launcher name or an unverified current
+installation for that evidence.
 
 ## Security, privacy, and logging rules
 

@@ -157,10 +157,11 @@ For non-Steam shortcuts, a shortcut entry or launcher executable is not proof th
 game is installed. PlayTime accepts a checksum only after its backend resolver proves
 the actual regular payload is reachable. Supported resolver paths are direct Linux
 executables, AppImages, and Windows executables with direct-game evidence, plus
-recognized Heroic native or Flatpak shortcuts using verified Legendary, GOG, Nile, or
-sideload metadata. A missing payload, ambiguous shortcut, custom root, or unverified
-launcher variant remains visible as `unknown` or `unreachable` and is not automatically
-selected or hashed.
+recognized Heroic native or Flatpak shortcuts using source-backed Legendary or sideload
+metadata. Heroic GOG and Nile variants do not yet have a source-addressable positive
+fixture, so they remain `unknown`. A missing payload, ambiguous shortcut, custom root,
+or other unverified launcher variant remains visible as `unknown` or `unreachable` and
+is not automatically selected or hashed.
 
 Lutris, Bottles, and EmuDeck/Steam ROM Manager are intentionally unsupported in this
 release. They stay fail-closed: PlayTime does not infer a payload, invoke their
