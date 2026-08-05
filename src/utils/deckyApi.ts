@@ -1,4 +1,9 @@
-import type { RouterHook, ToastData, ToastNotification, Toaster } from "@decky/api";
+import type {
+	RouterHook,
+	ToastData,
+	ToastNotification,
+	Toaster,
+} from "@decky/api";
 import * as deckyApi from "@decky/api";
 import { error } from "@src/utils/logger";
 

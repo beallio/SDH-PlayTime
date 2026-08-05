@@ -1,12 +1,16 @@
 {
 	"name": "PlayTime",
-	"version": "3.3.0+beallio.5",
+	"version": "3.3.0+beallio.6",
 	"author": "ma3a, Kernel Panic, ynhhoJ",
 	"flags": [],
 	"api_version": 1,
 	"publish": {
-		"tags": ["utility", "time-tracking", "playtime"],
-		"description": "Track time you spend gaming — whether it's Steam titles or non-Steam games. Daily, weekly, and all-time stats.",
+		"tags": [
+			"utility",
+			"time-tracking",
+			"playtime"
+		],
+		"description": "Track time you spend gaming \u2014 whether it's Steam titles or non-Steam games. Daily, weekly, and all-time stats.",
 		"image": "https://raw.githubusercontent.com/0u73r-h34v3n/PlayTime/refs/heads/master/assets/image.png"
 	}
 }
