@@ -101,6 +101,11 @@ class HeroicGameResolutionTest(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(value), encoding="utf-8")
 
+    def write_text(self, relative_path: str, contents: str) -> None:
+        path = self.heroic_root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents, encoding="utf-8")
+
     def write_payload(
         self, relative_path: str, contents: bytes = b"MZ\x90\x00"
     ) -> Path:
@@ -468,6 +473,91 @@ class HeroicGameResolutionTest(unittest.TestCase):
 
         self.assertEqual(result.payload_status, "reachable")
         self.assertEqual(result.payload_path, str(payload))
+
+    def test_identical_duplicate_legendary_top_level_key_is_deduplicated(self) -> None:
+        payload = self.write_payload("Games/Normal Game/Binaries/NormalGame.exe")
+        record = json.dumps(self.installed()["normal-game"])  # type: ignore[index]
+        self.write_text(
+            "legendaryConfig/legendary/installed.json",
+            f'{{"normal-game": {record}, "normal-game": {record}}}',
+        )
+
+        result = (
+            self.coordinator()
+            .resolve_batch(
+                [
+                    heroic_entry(
+                        executable="/opt/Heroic/heroic",
+                        launch_options=(
+                            "heroic://launch?appName=normal-game&runner=legendary",
+                        ),
+                    )
+                ]
+            )
+            .results[0]
+        )
+
+        self.assertEqual(result.metadata_status, "resolved")
+        self.assertEqual(result.payload_status, "reachable")
+        self.assertEqual(result.payload_path, str(payload))
+
+    def test_conflicting_duplicate_legendary_keys_fail_closed(self) -> None:
+        entry = heroic_entry(
+            executable="/opt/Heroic/heroic",
+            launch_options=("heroic://launch?appName=normal-game&runner=legendary",),
+        )
+        normal_record = dict(self.installed()["normal-game"])  # type: ignore[index]
+        conflicting_record = dict(normal_record)
+        conflicting_record["install_path"] = str(self.root / "Other Game")
+        top_level_conflict = (
+            f'{{"normal-game": {json.dumps(normal_record)}, '
+            f'"normal-game": {json.dumps(conflicting_record)}}}'
+        )
+        record_fields = {
+            "app_name": "normal-game",
+            "install_path": str(self.root / "Games/Normal Game"),
+            "executable": "Binaries/NormalGame.exe",
+        }
+        conflicts = (
+            ("app_name", "normal-game", "different-game"),
+            ("runner", "legendary", "gog"),
+            ("install_path", str(self.root / "One"), str(self.root / "Two")),
+            ("executable", "One.exe", "Two.exe"),
+            ("game", str(self.root / "One"), str(self.root / "Two")),
+        )
+        cases = (("top_level", top_level_conflict),)
+        cases += tuple(
+            (
+                field_name,
+                "{"
+                + ", ".join(
+                    [
+                        f'"{name}": {json.dumps(value)}'
+                        for name, value in record_fields.items()
+                        if name != field_name
+                    ]
+                    + [
+                        f'"{field_name}": {json.dumps(first_value)}',
+                        f'"{field_name}": {json.dumps(second_value)}',
+                    ]
+                )
+                + "}",
+            )
+            for field_name, first_value, second_value in conflicts
+        )
+
+        for case, record in cases:
+            with self.subTest(case=case):
+                contents = (
+                    record if case == "top_level" else f'{{"normal-game": {record}}}'
+                )
+                self.write_text("legendaryConfig/legendary/installed.json", contents)
+
+                result = self.coordinator().resolve_batch([entry]).results[0]
+
+                self.assertEqual(result.metadata_status, "invalid")
+                self.assertEqual(result.payload_status, "unknown")
+                self.assertEqual(result.reason_code, "malformed")
 
     def test_conflicting_metadata_identity_aliases_and_runner_are_ambiguous(
         self,

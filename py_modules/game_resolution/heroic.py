@@ -48,6 +48,17 @@ def _read_text(path: Path) -> str:
     return contents.decode("utf-8")
 
 
+def _duplicate_aware_json_object(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result and result[key] != value:
+            raise ValueError("Heroic metadata contains conflicting duplicate keys")
+        result[key] = value
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class HeroicConfigRoots:
     """Known Heroic configuration roots; callers may inject these for tests."""
@@ -265,7 +276,7 @@ class HeroicAdapter:
         try:
             if len(contents.encode("utf-8")) > _MAX_METADATA_BYTES:
                 raise ValueError("Heroic metadata exceeds the byte limit")
-            data = json.loads(contents)
+            data = json.loads(contents, object_pairs_hook=_duplicate_aware_json_object)
             _validate_metadata_shape(data)
         except (TypeError, UnicodeError, ValueError, RecursionError) as error:
             raise RequestValidationError("malformed") from error
