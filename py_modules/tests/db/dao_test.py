@@ -8,6 +8,7 @@ from py_modules.db.migration import DbMigration
 from py_modules.schemas.request import (
     AssociationComponentConfirmationRequest,
     AssociationComponentMember,
+    MAX_ASSOCIATION_COMPONENT_MEMBERS,
 )
 from py_modules.schemas.response import AssociationComponentError
 from py_modules.tests.helpers import AbstractDatabaseTest
@@ -53,6 +54,15 @@ class TestDao(AbstractDatabaseTest):
                 for game_id in selected_member_ids
             ),
         )
+
+    def _create_oversized_checksum_component(self) -> tuple[str, ...]:
+        member_ids = tuple(
+            f"member-{index}" for index in range(MAX_ASSOCIATION_COMPONENT_MEMBERS + 1)
+        )
+        for game_id in member_ids:
+            self.dao.save_game_dict(game_id, game_id.title())
+            self.dao.save_game_checksum(game_id, "shared", "SHA256", 1, None, None)
+        return member_ids
 
     def test_grouped_association_read_has_sorted_members_and_fingerprint(self):
         self._create_checksum_star()
@@ -113,6 +123,18 @@ class TestDao(AbstractDatabaseTest):
             tuple(member.id for member in result.selected_members),
             ("alpha", "beta", "delta", "gamma"),
         )
+        self.assertEqual(
+            tuple(member.id for member in result.existing_members),
+            ("alpha", "beta", "delta", "gamma"),
+        )
+        self.assertEqual(result.expected_parent_game_id, "beta")
+        self.assertEqual(
+            result.fingerprint,
+            self.dao.game_association_component_fingerprint(
+                ("alpha", "beta", "delta", "gamma")
+            ),
+        )
+        self.assertEqual(result.aliases, ("alpha", "delta", "gamma"))
         with closing(sqlite3.connect(self.database_file)) as connection:
             self.assertEqual(
                 connection.execute(
@@ -120,6 +142,36 @@ class TestDao(AbstractDatabaseTest):
                 ).fetchone(),
                 ("Delta",),
             )
+
+    def test_oversized_persisted_component_rejects_before_name_lookup_or_mutation(
+        self,
+    ):
+        member_ids = self._create_oversized_checksum_component()
+        self.dao.create_game_association(member_ids[0], member_ids[1])
+        before = self.dao.get_all_game_associations()
+        request = AssociationComponentConfirmationRequest(
+            anchor_game_id=member_ids[0],
+            proposed_parent_game_id=member_ids[0],
+            proposed_parent_game_name=member_ids[0].title(),
+            expected_parent_game_id=None,
+            expected_fingerprint=self.dao.game_association_component_fingerprint(
+                member_ids
+            ),
+            selected_members=tuple(
+                AssociationComponentMember(game_id, game_id.title())
+                for game_id in member_ids[:MAX_ASSOCIATION_COMPONENT_MEMBERS]
+            ),
+        )
+
+        with patch.object(
+            self.dao, "_get_association_component_member_games"
+        ) as get_member_games:
+            with self.assertRaises(AssociationComponentError) as raised:
+                self.dao.confirm_game_association_component(request)
+
+        self.assertEqual(raised.exception.code, "INVALID_REQUEST")
+        get_member_games.assert_not_called()
+        self.assertEqual(self.dao.get_all_game_associations(), before)
 
     def test_component_confirmation_rejects_stale_fingerprint_without_writing(self):
         self._create_checksum_star()

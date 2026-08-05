@@ -11,7 +11,11 @@ from py_modules.game_identity import (
     canonical_game_name,
 )
 from py_modules.schemas.common import ChecksumAlgorithm, Game
-from py_modules.schemas.request import AssociationComponentConfirmationRequest
+from py_modules.schemas.request import (
+    AssociationComponentConfirmationRequest,
+    MAX_ASSOCIATION_COMPONENT_MEMBERS,
+    MAX_ASSOCIATION_GAME_ID_LENGTH,
+)
 from py_modules.schemas.response import (
     AssociationComponentConfirmation,
     AssociationComponentError,
@@ -414,9 +418,54 @@ class Dao:
 
         return sha256("\x1f".join(sorted(set(member_ids))).encode()).hexdigest()
 
+    @staticmethod
+    def _validate_association_component_game_id(game_id: object, field: str) -> None:
+        if (
+            not isinstance(game_id, str)
+            or not game_id
+            or len(game_id) > MAX_ASSOCIATION_GAME_ID_LENGTH
+        ):
+            raise AssociationComponentError(
+                code="INVALID_REQUEST",
+                message=f"{field} must be a bounded non-empty string.",
+            )
+
+    def _validate_association_component_members(
+        self, member_ids: Collection[str]
+    ) -> tuple[str, ...]:
+        members = tuple(member_ids)
+        if len(members) > MAX_ASSOCIATION_COMPONENT_MEMBERS:
+            raise AssociationComponentError(
+                code="INVALID_REQUEST",
+                message="The association component exceeds the maximum size.",
+            )
+        for member_id in members:
+            self._validate_association_component_game_id(
+                member_id, "component member game ID"
+            )
+        return members
+
+    def _get_association_component_member_games(
+        self,
+        connection: sqlite3.Connection,
+        member_ids: tuple[str, ...],
+    ) -> tuple[Game, ...]:
+        placeholders = ", ".join("?" for _ in member_ids)
+        names_by_game_id = dict(
+            connection.execute(
+                f"SELECT game_id, name FROM game_dict WHERE game_id IN ({placeholders})",
+                member_ids,
+            ).fetchall()
+        )
+        return tuple(
+            Game(game_id, names_by_game_id.get(game_id) or "Unknown Game")
+            for game_id in member_ids
+        )
+
     def get_game_association_component(
         self, anchor_game_id: str
     ) -> AssociationComponentSnapshot:
+        self._validate_association_component_game_id(anchor_game_id, "anchor_game_id")
         with self._db.transactional() as connection:
             return self._get_game_association_component(connection, anchor_game_id)
 
@@ -425,6 +474,7 @@ class Dao:
         connection: sqlite3.Connection,
         anchor_game_id: str,
     ) -> AssociationComponentSnapshot:
+        self._validate_association_component_game_id(anchor_game_id, "anchor_game_id")
         components = self._get_game_identity_components(connection)
         component = components.get(anchor_game_id)
         if component is None:
@@ -433,17 +483,9 @@ class Dao:
                 message="The association component anchor no longer exists.",
             )
 
-        members = component.members
-        placeholders = ", ".join("?" for _ in members)
-        names_by_game_id = dict(
-            connection.execute(
-                f"SELECT game_id, name FROM game_dict WHERE game_id IN ({placeholders})",
-                members,
-            ).fetchall()
-        )
-        existing_members = tuple(
-            Game(game_id, names_by_game_id.get(game_id) or "Unknown Game")
-            for game_id in members
+        members = self._validate_association_component_members(component.members)
+        existing_members = self._get_association_component_member_games(
+            connection, members
         )
         expected_parent_game_id = (
             component.canonical_id if component.status == "confirmed" else None
@@ -552,15 +594,19 @@ class Dao:
                             child_game_id,
                         )
 
+                confirmed_snapshot = self._get_game_association_component(
+                    connection, request.anchor_game_id
+                )
+
                 return AssociationComponentConfirmation(
                     anchor_game_id=request.anchor_game_id,
                     proposed_parent=Game(
                         request.proposed_parent_game_id,
                         request.proposed_parent_game_name,
                     ),
-                    expected_parent_game_id=request.expected_parent_game_id,
-                    existing_members=snapshot.existing_members,
-                    fingerprint=snapshot.fingerprint,
+                    expected_parent_game_id=confirmed_snapshot.expected_parent_game_id,
+                    existing_members=confirmed_snapshot.existing_members,
+                    fingerprint=confirmed_snapshot.fingerprint,
                     selected_members=tuple(
                         Game(member.game_id, member.game_name)
                         for member in selected_members
@@ -570,11 +616,7 @@ class Dao:
                         request.proposed_parent_game_name,
                     ),
                     status="confirmed",
-                    aliases=tuple(
-                        game_id
-                        for game_id in selected_member_ids
-                        if game_id != request.proposed_parent_game_id
-                    ),
+                    aliases=confirmed_snapshot.aliases,
                 )
         except AssociationComponentError:
             raise

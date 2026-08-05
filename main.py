@@ -38,6 +38,7 @@ from py_modules.schemas.request import (
     GetFileSHA256DTO,
     GetGameDTO,
     HasDataBeforeDict,
+    MAX_ASSOCIATION_GAME_ID_LENGTH,
     RemoveAllGameChecksumsDTO,
     RemoveGameChecksumDTO,
 )
@@ -57,6 +58,14 @@ from py_modules.association_manager import AssociationManager
 
 # pylint: enable=wrong-import-order, wrong-import-position
 # autopep8: on
+
+
+def _is_bounded_association_game_id(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and len(value) <= MAX_ASSOCIATION_GAME_ID_LENGTH
+    )
 
 
 class Plugin:
@@ -525,7 +534,7 @@ class Plugin:
         """Read one checksum/association component for an explicit confirmation."""
         try:
             self._ensure_services_initialized()
-            if not isinstance(anchor_game_id, str) or not anchor_game_id:
+            if not _is_bounded_association_game_id(anchor_game_id):
                 return {
                     "success": False,
                     "error": {
@@ -600,7 +609,7 @@ class Plugin:
         """Detach a child association while retaining its playtime history."""
         try:
             self._ensure_services_initialized()
-            if not isinstance(child_game_id, str) or not child_game_id:
+            if not _is_bounded_association_game_id(child_game_id):
                 return {
                     "success": False,
                     "error": {
@@ -625,7 +634,7 @@ class Plugin:
         """Dissolve every explicit association edge in one logical component."""
         try:
             self._ensure_services_initialized()
-            if not isinstance(anchor_game_id, str) or not anchor_game_id:
+            if not _is_bounded_association_game_id(anchor_game_id):
                 return {
                     "success": False,
                     "error": {
