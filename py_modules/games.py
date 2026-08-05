@@ -1,6 +1,5 @@
 from py_modules.db.dao import Dao
-from typing import Dict, List, Optional, Set
-import dataclasses
+from typing import Dict, List, Set
 from py_modules.schemas.common import Game
 from py_modules.schemas.response import (
     FileChecksum,

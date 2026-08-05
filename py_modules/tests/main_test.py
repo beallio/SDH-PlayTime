@@ -370,23 +370,6 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_add_time_multiple_sessions_with_status_changes(self):
-        dao = plugin._get_current_dao()
-        result = dao.fetch_overall_playtime()
-        game_ids = [g.game_id for g in result]
-        self.assertIn(
-            "game_hidden", game_ids, "Hidden status should still track playtime in DB"
-        )
-
-        # Verify it's hidden from statistics UI
-        stats = await plugin.per_game_overall_statistics()
-        stat_game_ids = [stat["game"]["id"] for stat in stats]
-        self.assertNotIn(
-            "game_hidden",
-            stat_game_ids,
-            "Hidden status should hide game from statistics",
-        )
-
-    async def test_add_time_multiple_sessions_with_status_changes(self):
         """Test add_time behavior across status changes."""
         plugin = self.main.Plugin()
         await plugin._main()

@@ -5,6 +5,7 @@ from typing import Tuple, List, Dict, Optional, Collection
 
 from py_modules.db.sqlite_db import SqlLiteDb
 from py_modules.schemas.common import ChecksumAlgorithm
+from py_modules.schemas.response import SessionInformation
 
 
 @dataclass(slots=True)
@@ -23,22 +24,6 @@ class DailyGameTimeDto:
     time: int
     sessions: int
     checksum: str | None
-
-
-@dataclass(slots=True)
-class SessionInformation:
-    date: str
-    duration: float
-    migrated: str | None
-    checksum: str | None
-
-    def to_dict(self) -> Dict:
-        return {
-            "date": self.date,
-            "duration": self.duration,
-            "migrated": self.migrated,
-            "checksum": self.checksum,
-        }
 
 
 @dataclass(slots=True)
