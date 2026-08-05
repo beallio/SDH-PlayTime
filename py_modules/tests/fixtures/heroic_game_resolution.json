@@ -1,0 +1,69 @@
+{
+  "source": {
+    "repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+    "commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+    "files": [
+      "src/backend/protocol.ts",
+      "src/backend/constants/paths.ts",
+      "src/backend/storeManagers/legendary/constants.ts",
+      "src/backend/storeManagers/sideload/electronStores.ts",
+      "src/backend/storeManagers/sideload/library.ts",
+      "src/backend/game_config.ts"
+    ]
+  },
+  "shortcuts": {
+    "native_current_query": {
+      "shortcutExe": "/opt/Heroic/heroic",
+      "shortcutLaunchOptions": "heroic://launch?appName=normal-game&runner=legendary"
+    },
+    "appimage_current_query": {
+      "shortcutExe": "/home/deck/Applications/Heroic-2.16.1.AppImage",
+      "shortcutLaunchOptions": "heroic://launch?appName=alternate-game&runner=legendary"
+    },
+    "flatpak_legacy_path": {
+      "flatpakAppId": "com.heroicgameslauncher.hgl",
+      "shortcutExe": "/usr/bin/flatpak",
+      "shortcutLaunchOptions": "run com.heroicgameslauncher.hgl heroic://launch/legendary/legacy-game"
+    },
+    "sideload_query": {
+      "shortcutExe": "/opt/Heroic/heroic",
+      "shortcutLaunchOptions": "heroic://launch?appName=rom-game&runner=sideload"
+    }
+  },
+  "metadata": {
+    "legendaryInstalled": {
+      "normal-game": {
+        "app_name": "normal-game",
+        "install_path": "{root}/Games/Normal Game",
+        "executable": "Binaries/NormalGame.exe"
+      },
+      "legacy-game": {
+        "app_name": "legacy-game",
+        "install_path": "{root}/Games/Legacy Game",
+        "executable": "LegacyGame.exe"
+      },
+      "alternate-game": {
+        "app_name": "alternate-game",
+        "install_path": "{root}/Games/Alternate Game",
+        "executable": "Default.exe"
+      }
+    },
+    "settings": {
+      "alternate-game": {
+        "targetExe": "{root}/Games/Alternate Game/Binaries/StoredAlternate.exe",
+        "winePrefix": "{root}/Prefixes/alternate-game"
+      }
+    },
+    "sideloadLibrary": {
+      "games": [
+        {
+          "app_name": "rom-game",
+          "runner": "sideload",
+          "install": {
+            "executable": "{root}/ROMs/rom-game.chd"
+          }
+        }
+      ]
+    }
+  }
+}

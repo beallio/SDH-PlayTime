@@ -1007,7 +1007,7 @@ export default function getEmudeckPathToGame(_launchCommand: string) {
 	return undefined;
 }
 
-async function resolveDirectPayloadPath(
+async function resolvePayloadPath(
 	evidence: ShortcutEvidenceClassification,
 ): Promise<string | undefined> {
 	const response = await Backend.resolveGamePayloads([
@@ -1020,31 +1020,26 @@ async function resolveDirectPayloadPath(
 	]);
 	const result = response.results[0];
 	return result?.payloadStatus === "reachable" && result.payloadKind === "file"
-		? result.payloadPath ?? undefined
+		? (result.payloadPath ?? undefined)
 		: undefined;
 }
 
-export async function getPathToGame(
-	applicationId: number,
-) {
+export async function getPathToGame(applicationId: number) {
 	const appDetails = await getAppDetails(applicationId);
 	if (!appDetails) {
 		return;
 	}
 
 	const evidence = classifyShortcutEvidence(appDetails);
-	const directCandidate =
-		evidence.launcherKind === "direct" && evidence.status === "recognized"
-			? evidence.normalized.executableTokens[0]
-			: undefined;
-	const resolvedDirectPayload = directCandidate
-		? await resolveDirectPayloadPath(
-				evidence,
-			)
+	const supportedCandidate =
+		evidence.status === "recognized" &&
+		(evidence.launcherKind === "direct" || evidence.launcherKind === "heroic");
+	const resolvedPayload = supportedCandidate
+		? await resolvePayloadPath(evidence)
 		: undefined;
-	if (!resolvedDirectPayload) {
+	if (!resolvedPayload) {
 		logger.debug("Unsupported non-Steam game payload.");
 	}
 
-	return resolvedDirectPayload;
+	return resolvedPayload;
 }

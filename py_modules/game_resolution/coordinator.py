@@ -8,6 +8,7 @@ from typing import Callable, Protocol
 
 from .direct import DirectExecutableAdapter
 from .filesystem import FilesystemProbe
+from .heroic import HeroicAdapter
 from .models import (
     BatchResolutionResult,
     MAX_RESOLUTION_BATCH_SIZE,
@@ -53,7 +54,8 @@ class GameResolutionCoordinator:
         if entry_timeout_seconds <= 0 or batch_timeout_seconds <= 0 or max_workers <= 0:
             raise ValueError("resolution time budgets and worker cap must be positive")
         if adapters is None:
-            adapters = (DirectExecutableAdapter(FilesystemProbe()),)
+            probe = FilesystemProbe()
+            adapters = (DirectExecutableAdapter(probe), HeroicAdapter(probe))
         self._adapter_registry = AdapterRegistry(adapters)
         self._entry_timeout_seconds = entry_timeout_seconds
         self._batch_timeout_seconds = batch_timeout_seconds

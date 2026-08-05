@@ -141,6 +141,39 @@ describe("getPathToGame compatibility", () => {
 		await expect(getPathToGame(1)).resolves.toBeUndefined();
 	});
 
+	test("uses a backend-verified Heroic payload rather than the launcher", async () => {
+		setShortcutDetails({
+			strShortcutExe: "/opt/Heroic/heroic",
+			strShortcutLaunchOptions:
+				"heroic://launch?appName=normal-game&runner=legendary",
+		});
+		callHandler = async () => ({
+			results: [
+				{
+					launcherKind: "heroic",
+					classificationStatus: "recognized",
+					metadataStatus: "resolved",
+					payloadStatus: "reachable",
+					payloadKind: "file",
+					provenance: "heroic_metadata",
+					reasonCode: null,
+					payloadPath: "/home/deck/Games/Normal Game/Binaries/NormalGame.exe",
+				},
+			],
+			error: null,
+		});
+
+		await expect(getPathToGame(1)).resolves.toBe(
+			"/home/deck/Games/Normal Game/Binaries/NormalGame.exe",
+		);
+		expect(calls[0]?.[1]).toEqual([
+			expect.objectContaining({
+				launcherKind: "heroic",
+				classificationStatus: "recognized",
+			}),
+		]);
+	});
+
 	for (const executable of [
 		"/home/deck/.local/bin/UbisoftConnect-latest.exe",
 		"/home/deck/.local/bin/DuckStation-master.exe",
