@@ -151,6 +151,8 @@ ANALYZE -> PLAN -> TEST (RED) -> IMPLEMENT (GREEN) -> REFACTOR -> VALIDATE
   a repository virtual environment or run `pip install` for routine validation.
   The authoritative orchestration hook separately runs its established
   `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest` gate.
+- Run Ruff and `ty` through the pinned ephemeral versions documented below.
+  Update those pins deliberately in a dedicated tooling-maintenance change.
 - Treat Steam/Decky runtime interfaces as unstable internal APIs. Verify local
   declarations, existing call sites, and live behavior when correctness depends
   on runtime-only fields.
@@ -163,7 +165,10 @@ ANALYZE -> PLAN -> TEST (RED) -> IMPLEMENT (GREEN) -> REFACTOR -> VALIDATE
 Choose validation proportionate to the change. The normal complete suite is:
 
 ```bash
-uv run --with pytest pytest
+uvx ruff@0.16.0 check .
+uvx ruff@0.16.0 format --check .
+uvx ty@0.0.64 check main.py py_modules --exclude 'py_modules/tests/**'
+uv run --no-project --with pytest pytest
 bun test
 pnpm exec tsc --noEmit
 pnpm exec biome format .
@@ -210,6 +215,8 @@ A modifying task is complete only when:
 ```text
 [ ] Scope and plan requirements are satisfied
 [ ] Focused negative control was demonstrated where applicable
+[ ] Ruff lint and formatting checks pass
+[ ] `ty` passes for production Python
 [ ] Relevant frontend and backend tests pass
 [ ] TypeScript and Biome checks pass where applicable
 [ ] Production build passes where applicable

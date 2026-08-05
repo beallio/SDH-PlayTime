@@ -2,7 +2,7 @@
 Tracking status manager for controlling game tracking behavior.
 """
 
-from typing import Optional, List, Dict
+from typing import List, Dict
 from py_modules.db.dao import Dao
 
 

@@ -880,9 +880,7 @@ class TestPlaytimeInformationWithAssociations(AbstractDatabaseTest):
 
         # Give child playtime in the last two weeks
         now = datetime.now()
-        self._create_game_with_session_on_date(
-            "child_3", "Child 3", now, 1800
-        )
+        self._create_game_with_session_on_date("child_3", "Child 3", now, 1800)
 
         self.dao.create_game_association("empty_name_parent", "child_3")
 
@@ -896,7 +894,9 @@ class TestPlaytimeInformationWithAssociations(AbstractDatabaseTest):
         # forcing the python code to synthesize it and use parent_names fallback.
         result = statistics.get_statistics_for_last_two_weeks()
 
-        parent_result = next(r for r in result if r["game"]["id"] == "empty_name_parent")
+        parent_result = next(
+            r for r in result if r["game"]["id"] == "empty_name_parent"
+        )
 
         # Parent name should fall back to "Unknown Game" instead of empty/null
         self.assertEqual(parent_result["game"]["name"], "Unknown Game")

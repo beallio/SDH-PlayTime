@@ -1,4 +1,3 @@
-import dataclasses
 from datetime import datetime, date, time, timedelta
 from typing import Dict, List, Any, Optional
 from py_modules.db.dao import DailyGameTimeDto, Dao, GameTimeDto
@@ -196,6 +195,7 @@ class Statistics:
 
         # Add parents that didn't have their own playtime
         from py_modules.db.dao import PlaytimeInformation
+
         for parent_id, children_ids in parent_to_children.items():
             if parent_id not in games_by_id:
                 # Create a blank parent info to merge children into

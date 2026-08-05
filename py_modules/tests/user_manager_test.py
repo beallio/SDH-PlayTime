@@ -8,7 +8,6 @@ Tests cover:
 - Edge cases and error handling
 """
 
-import os
 import shutil
 import sqlite3
 import tempfile
@@ -345,7 +344,7 @@ class TestUserManagerMigration(TestUserManager):
         dao1.save_game_dict("user1_game", "User 1 Game")
 
         # Second user logs in - should also get legacy data
-        dao2 = self.user_manager.set_current_user(user2)
+        self.user_manager.set_current_user(user2)
 
         user2_db_path = str(self.user_manager.get_user_db_path(user2))
         games = self._get_games_from_db(user2_db_path)

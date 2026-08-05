@@ -1,10 +1,10 @@
-import decky
-import dataclasses
+import asyncio
 import os
 import sys
-import asyncio
+from datetime import datetime, time
 from pathlib import Path
-from typing import List
+
+import decky
 
 
 decky_user_home = os.environ["DECKY_USER_HOME"]
@@ -24,8 +24,6 @@ add_plugin_to_path()
 # pylint: disable=wrong-import-order, wrong-import-position
 # ruff: noqa: E402
 from py_modules.db.dao import Dao
-from py_modules.db.migration import DbMigration
-from py_modules.db.sqlite_db import SqlLiteDb
 from py_modules.files import Files
 from py_modules.games import Games
 from py_modules.helpers import parse_date
@@ -349,7 +347,7 @@ class Plugin:
             decky.logger.exception("[save_game_checksum] Unhandled exception: %s", e)
             raise
 
-    async def save_game_checksum_bulk(self, dtos_list: List[AddGameChecksumDict]):
+    async def save_game_checksum_bulk(self, dtos_list: list[AddGameChecksumDict]):
         try:
             self._ensure_services_initialized()
             dtos = [AddGameChecksumDTO.from_dict(dto_dict) for dto_dict in dtos_list]
@@ -423,7 +421,7 @@ class Plugin:
     async def has_data_before(self, dto_dict: HasDataBeforeDict):
         try:
             self._ensure_services_initialized()
-            date = parse_date(dto_dict["date"])
+            date = datetime.combine(parse_date(dto_dict["date"]), time.min)
             game_id = dto_dict["game_id"]
             return self.statistics.dao.has_data_before(date, game_id)
         except Exception as e:
@@ -449,6 +447,9 @@ class Plugin:
             self._ensure_services_initialized()
             game_id = dto_dict.get("game_id")
             status = dto_dict.get("status")
+
+            if not isinstance(game_id, str) or not isinstance(status, str):
+                raise ValueError("game_id and status must be strings")
 
             self.tracking_manager.set_tracking_status(game_id, status)
             return True

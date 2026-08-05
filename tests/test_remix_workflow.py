@@ -6,9 +6,9 @@ from pathlib import Path
 import unittest
 
 
-WORKFLOW = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "remix-release.yml").read_text(
-    encoding="utf-8"
-)
+WORKFLOW = (
+    Path(__file__).resolve().parents[1] / ".github" / "workflows" / "remix-release.yml"
+).read_text(encoding="utf-8")
 
 
 class RemixWorkflowTests(unittest.TestCase):
@@ -20,7 +20,10 @@ class RemixWorkflowTests(unittest.TestCase):
 
     def test_all_archives_depend_on_the_complete_quality_gate(self) -> None:
         for command in (
-            "uv run --with pytest pytest",
+            "uvx ruff@0.16.0 check .",
+            "uvx ruff@0.16.0 format --check .",
+            "uvx ty@0.0.64 check main.py py_modules --exclude 'py_modules/tests/**'",
+            "uv run --no-project --with pytest pytest",
             "bun test",
             "pnpm exec tsc --noEmit",
             "pnpm exec biome format .",
@@ -65,11 +68,18 @@ class RemixWorkflowTests(unittest.TestCase):
     def test_only_publish_jobs_can_write_and_prs_never_publish(self) -> None:
         self.assertEqual(WORKFLOW.count("contents: write"), 2)
         self.assertIn("publish-remix-nightly:", WORKFLOW)
-        self.assertIn("github.event_name == 'push' && github.ref == 'refs/heads/remix'", WORKFLOW)
+        self.assertIn(
+            "github.event_name == 'push' && github.ref == 'refs/heads/remix'", WORKFLOW
+        )
         self.assertIn("publish-stable-release:", WORKFLOW)
-        self.assertIn("github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')", WORKFLOW)
+        self.assertIn(
+            "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')",
+            WORKFLOW,
+        )
 
-    def test_release_paths_validate_versions_and_prevent_nightly_regression(self) -> None:
+    def test_release_paths_validate_versions_and_prevent_nightly_regression(
+        self,
+    ) -> None:
         self.assertIn('version="${GITHUB_REF_NAME#v}"', WORKFLOW)
         self.assertIn('checked_package_version" != "$version"', WORKFLOW)
         self.assertIn('checked_plugin_version" != "$version"', WORKFLOW)

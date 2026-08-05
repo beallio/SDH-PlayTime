@@ -28,7 +28,10 @@ Replace `<slug>` with a descriptive lowercase slug. Make only the change that up
 Run the complete relevant suite before committing. For a normal frontend/backend change, use:
 
 ```bash
-uv run --with pytest pytest
+uvx ruff@0.16.0 check .
+uvx ruff@0.16.0 format --check .
+uvx ty@0.0.64 check main.py py_modules --exclude 'py_modules/tests/**'
+uv run --no-project --with pytest pytest
 bun test
 pnpm exec tsc --noEmit
 pnpm exec biome format .
