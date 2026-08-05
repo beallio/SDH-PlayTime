@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { BACK_END_API } from "@src/constants";
 
 const backendCalls: unknown[][] = [];
@@ -86,6 +86,15 @@ function build(overrides: Partial<GamePresenceBuildInput> = {}) {
 }
 
 describe("buildGamePresenceSnapshot", () => {
+	afterEach(() => {
+		// @ts-expect-error cleanup mocked runtime globals
+		delete globalThis.appStore;
+		// @ts-expect-error cleanup mocked runtime globals
+		delete globalThis.collectionStore;
+		// @ts-expect-error cleanup mocked runtime globals
+		delete globalThis.SteamClient;
+	});
+
 	beforeEach(() => {
 		backendCalls.length = 0;
 		backendCallHandler = async () => undefined;
@@ -502,6 +511,7 @@ describe("buildGamePresenceSnapshot", () => {
 			"loading",
 			"partial",
 			"failed",
+			"missing",
 			"complete",
 		] as const;
 		for (const status of inventoryStatuses) {
@@ -528,6 +538,9 @@ describe("buildGamePresenceSnapshot", () => {
 			expect(snapshot.candidates[0]?.inventory.status).toBe(
 				status === "complete" ? "current" : "unknown",
 			);
+			expect(snapshot.candidates[0]?.availability.status).toBe(
+				status === "complete" ? "reachable" : "unknown",
+			);
 			const removed = await refreshCurrentGamePresenceSnapshot({
 				nativeInventory: () => ({ status: "complete", apps: [] }),
 				nonSteamInventory: () => ({ status, apps: [] }),
@@ -537,6 +550,7 @@ describe("buildGamePresenceSnapshot", () => {
 			expect(removed.candidates[0]?.inventory.status).toBe(
 				status === "complete" ? "historical" : "unknown",
 			);
+			expect(removed.candidates[0]?.availability.status).toBe("unknown");
 		}
 
 		const writeMethods: ReadonlySet<string> = new Set([
@@ -550,6 +564,87 @@ describe("buildGamePresenceSnapshot", () => {
 				([method]) => typeof method === "string" && writeMethods.has(method),
 			),
 		).toEqual([]);
+	});
+
+	test("uses complete runtime inventory snapshots by default for installed Steam and non-Steam visibility", async () => {
+		const nonSteamId = String(0x80000001);
+		backendCallHandler = async (method: unknown) => {
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [
+					{ game: { id: "10", name: "Native Runtime Game" }, duration: 12 },
+					{
+						game: { id: nonSteamId, name: "Shortcut Runtime Game" },
+						duration: 1,
+					},
+				];
+			}
+			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+				return { results: [reachableResult()], error: null };
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
+
+		(globalThis as unknown as { appStore: { allApps: { appid: number; display_name: string; app_type: number }[] } }).appStore = {
+			allApps: [
+				{
+					appid: 10,
+					display_name: "Native Runtime Game",
+					app_type: 0,
+				},
+			],
+		};
+		(globalThis as unknown as { collectionStore: { deckDesktopApps?: { apps: Map<number, { appid: number; display_name: string }> } } }).collectionStore = {
+			deckDesktopApps: {
+				apps: new Map([
+					[
+						0x80000001,
+						{
+							appid: 0x80000001,
+							display_name: "Shortcut Runtime Game",
+						},
+					],
+				]),
+			},
+		};
+		(globalThis as unknown as { SteamClient: { Apps?: { BIsAppInstalled: (appId: number) => boolean } } }).SteamClient = {
+			Apps: {
+				BIsAppInstalled: (appId: number) => appId === 10,
+			},
+		};
+
+		const snapshot = await refreshCurrentGamePresenceSnapshot({
+			getAppDetails: async (appId) => directDetails(appId),
+		});
+
+		expect(snapshot.inventories).toEqual({
+			native_steam: { status: "complete" },
+			non_steam: { status: "complete" },
+		});
+		expect(snapshot.candidates).toHaveLength(2);
+		const candidatesById = Object.fromEntries(
+			snapshot.candidates.map((candidate) => [candidate.id, candidate]),
+		);
+		expect(candidatesById["10"]?.source).toBe("native_steam");
+		expect(candidatesById["10"]?.inventory).toEqual({
+			status: "current",
+			reasons: [],
+		});
+		expect(candidatesById["10"]?.availability).toEqual({
+			status: "reachable",
+			reasons: [],
+			label: "Installed",
+		});
+		expect(candidatesById[nonSteamId]?.source).toBe("non_steam");
+		expect(candidatesById[nonSteamId]?.inventory).toEqual({
+			status: "current",
+			reasons: [],
+		});
+		expect(candidatesById[nonSteamId]?.availability).toEqual({
+			status: "reachable",
+			reasons: [],
+			label: "Available on this Deck",
+		});
+		expect(candidatesById[nonSteamId]?.launcherKind).toBe("direct");
 	});
 
 	test("bounds detail reads and does not write while refreshing caller-provided sources", async () => {

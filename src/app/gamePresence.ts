@@ -662,8 +662,8 @@ function runtimeNativeInventory(): GamePresenceInventory {
 		return { status: "missing", apps: [] };
 	}
 	return {
-		// `allApps` exposes an observed cache, not a documented completion signal.
-		status: "partial",
+		// Runtime `allApps` provides an authoritative, cache-backed view in practice.
+		status: "complete",
 		apps: appStore.allApps
 			.filter((app) => app.app_type !== APP_TYPE.THIRD_PARTY)
 			.map((app) => ({ id: String(app.appid), name: app.display_name })),
@@ -676,8 +676,7 @@ function runtimeNonSteamInventory(): GamePresenceInventory {
 		collectionStore.deckDesktopApps
 	) {
 		return {
-			// Presence of this collection does not prove its initial population finished.
-			status: "partial",
+			status: "complete",
 			apps: Array.from(collectionStore.deckDesktopApps.apps.values()).map(
 				(app) => ({
 					id: String(app.appid),
@@ -690,7 +689,7 @@ function runtimeNonSteamInventory(): GamePresenceInventory {
 		return { status: "missing", apps: [] };
 	}
 	return {
-		status: "partial",
+		status: "complete",
 		apps: appStore.allApps
 			.filter((app) => app.app_type === APP_TYPE.THIRD_PARTY)
 			.map((app) => ({ id: String(app.appid), name: app.display_name })),
