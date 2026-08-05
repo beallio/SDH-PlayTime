@@ -1,16 +1,11 @@
-# PlayTime
+# SDH-PlayTime Beallio Remix
+
+> [!IMPORTANT]
+> This is an **unofficial, independent remix** of [upstream SDH-PlayTime](https://github.com/0u73r-h34v3n/SDH-PlayTime). It keeps the installed folder `SDH-PlayTime` and runtime/plugin identity **PlayTime** so an in-place upgrade keeps the same data and settings. It is not a separate Decky Store plugin.
 
 <div align="center">
 
-  [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
-  ![Testing store Downloads](https://img.shields.io/badge/dynamic/json?url=https://testing.deckbrew.xyz/plugins?query=PlayTime&query=$[:1].downloads&suffix=%20installs&label=Testing%20store)
-  ![Testing store Updates](https://img.shields.io/badge/dynamic/json?url=https://testing.deckbrew.xyz/plugins?query=PlayTime&query=$[:1].updates&suffix=%20updates&label=Testing%20store)
-  ![Stable store Downloads](https://img.shields.io/badge/dynamic/json?url=https://plugins.deckbrew.xyz/plugins?query=PlayTime&query=$[:1].downloads&suffix=%20installs&label=Stable%20store)
-  ![Stable store Updates](https://img.shields.io/badge/dynamic/json?url=https://plugins.deckbrew.xyz/plugins?query=PlayTime&query=$[:1].updates&suffix=%20updates&label=Stable%20store)
-
-</div>
-
-<div align="center">
+[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/ynhhoj)
 
@@ -18,79 +13,131 @@
 
 ![PlayTime Logo](https://raw.githubusercontent.com/0u73r-h34v3n/PlayTime/refs/heads/master/assets/image.png)
 
-PlayTime is a plugin for the SteamDeck gaming console, designed to track the amount of time you spend playing games. It provides weekly and monthly reports, as well as an overall summary of your gaming time. In addition, it offers data migration from the SteamLessTimes and MetaDeck plugins. PlayTime also allows you to manually adjust your overall playtime through the settings.
+PlayTime is a Steam Deck plugin that tracks time spent in Steam and non-Steam games. It offers weekly, monthly, and overall reports, imports data from SteamLessTimes and MetaDeck, and allows manual playtime adjustments. This remix preserves that product and runtime identity while carrying independently maintained changes.
 
-## Installation
+## Releases and support boundary
 
-The best way to get plugin is to use official Decky Plugin Store (https://plugins.deckbrew.xyz/).
+This remix is distributed through [GitHub Releases](https://github.com/beallio/SDH-PlayTime-beallio-remix/releases) only. There is intentionally no separate Decky Store listing: installing a second Store identity would risk a second plugin installation and separate state.
 
-To install PlayTime manually:
+- Prefer a versioned **stable** release, for example [`v3.3.0+beallio.1`](https://github.com/beallio/SDH-PlayTime-beallio-remix/releases/tag/v3.3.0+beallio.1), and download `SDH-PlayTime-beallio-remix-v3.3.0+beallio.1.zip` plus its `.sha256` file.
+- [`remix-nightly`](https://github.com/beallio/SDH-PlayTime-beallio-remix/releases/tag/remix-nightly) is a rolling prerelease. Its expected files are `SDH-PlayTime-beallio-remix-nightly.zip` and `SDH-PlayTime-beallio-remix-nightly.zip.sha256`. It moves to newer commits and may regress; use it only when you can test and roll back.
 
-1. Go to the [PlayTime GitHub repository](https://github.com/your-username/PlayTime).
-2. Download the latest release package (ZIP format).
-3. Copy the zip file to SteamDeck and install it from Decky loader.
+The ZIP name is release-specific, but its contents always have exactly one `SDH-PlayTime/` root. That root is intentional and must not be renamed during installation.
 
-Alternatively, you can build PlayTime from source by following these steps:
+## Safe Steam Deck in-place upgrade
 
-1. Clone the PlayTime repository:
-   ```shell
-   git clone git@github.com:0u73r-h34v3n/SDH-PlayTime.git
-   ```
+These commands are for SteamOS Desktop Mode or an SSH shell as `deck`. They upgrade the existing `PlayTime` plugin **in place** at `/home/deck/homebrew/plugins/SDH-PlayTime`; they do not uninstall it, create another Decky Store entry, or run in this repository's development environment. Read the whole block before running it.
 
-2. Navigate to the project directory:
-   ```shell
-   cd SDH-PlayTime
-   ```
+Choose a stable tag and its matching asset below. For a nightly, change only `RELEASE_TAG` and `ARCHIVE_NAME` to `remix-nightly` and `SDH-PlayTime-beallio-remix-nightly.zip` after accepting the rolling-build warning above.
 
-3. If you want to deploy the plugin directly to the Deck, use the following command instead:
-   ```shell
-   make deploy
-   ```
+```bash
+set -euo pipefail
 
-   Make sure your SteamDeck is connected and properly set up for development.
+RELEASE_TAG='v3.3.0+beallio.1'
+ARCHIVE_NAME='SDH-PlayTime-beallio-remix-v3.3.0+beallio.1.zip'
+RELEASE_BASE="https://github.com/beallio/SDH-PlayTime-beallio-remix/releases/download/${RELEASE_TAG}"
 
-## Development Requirements
+PLUGIN_DIR='/home/deck/homebrew/plugins/SDH-PlayTime'
+RUNTIME_DIR='/home/deck/homebrew/data/SDH-PlayTime'
+SETTINGS_DIR='/home/deck/homebrew/settings/SDH-PlayTime'
+BACKUP_PARENT='/home/deck/backups/SDH-PlayTime'
+STAMP="$(date '+%Y%m%d-%H%M%S')"
+BACKUP_DIR="${BACKUP_PARENT}/remix-upgrade-${STAMP}"
+DOWNLOAD_DIR="/home/deck/Downloads/sdh-playtime-remix-${STAMP}"
+ARCHIVE_PATH="${DOWNLOAD_DIR}/${ARCHIVE_NAME}"
+CHECKSUM_PATH="${ARCHIVE_PATH}.sha256"
+STAGING_DIR="${DOWNLOAD_DIR}/staging"
 
-To contribute or modify PlayTime, ensure you have the following requirements installed:
+test -d "${PLUGIN_DIR}" || {
+  echo "Expected existing PlayTime install at ${PLUGIN_DIR}; refusing to create a second identity." >&2
+  exit 1
+}
 
-* pnpm version 9.x.x or higher
+mkdir -p "${DOWNLOAD_DIR}" "${BACKUP_DIR}" "${STAGING_DIR}"
+curl --fail --location --output "${ARCHIVE_PATH}" "${RELEASE_BASE}/${ARCHIVE_NAME}"
+curl --fail --location --output "${CHECKSUM_PATH}" "${RELEASE_BASE}/${ARCHIVE_NAME}.sha256"
+(
+  cd "${DOWNLOAD_DIR}"
+  sha256sum --check "$(basename "${CHECKSUM_PATH}")"
+)
+unzip -tq "${ARCHIVE_PATH}"
 
-You can install `pnpm` by following the instructions in the [pnpm GitHub repository](https://github.com/pnpm/pnpm).
+mapfile -t ZIP_ROOTS < <(zipinfo -1 "${ARCHIVE_PATH}" | awk -F/ 'NF { print $1 }' | sort -u)
+test "${#ZIP_ROOTS[@]}" -eq 1
+test "${ZIP_ROOTS[0]}" = 'SDH-PlayTime'
+unzip -q "${ARCHIVE_PATH}" -d "${STAGING_DIR}"
+test -f "${STAGING_DIR}/SDH-PlayTime/main.py"
+test -f "${STAGING_DIR}/SDH-PlayTime/dist/index.js"
+test -f "${STAGING_DIR}/SDH-PlayTime/py_modules/__init__.py"
 
-## Usage
+sudo systemctl stop plugin_loader.service
+if systemctl is-active --quiet plugin_loader.service; then
+  echo 'plugin_loader.service did not stop; refusing to replace plugin files.' >&2
+  exit 1
+fi
 
-Once PlayTime is installed on your SteamDeck, it will automatically start tracking your game playtime. You can access the plugin by launching the Decky Plugin Loader and selecting PlayTime from the list of installed plugins.
+sudo mkdir -p "${BACKUP_DIR}/plugin"
+sudo rsync -a "${PLUGIN_DIR}/" "${BACKUP_DIR}/plugin/"
+if test -d "${RUNTIME_DIR}"; then
+  sudo mkdir -p "${BACKUP_DIR}/runtime"
+  sudo rsync -a "${RUNTIME_DIR}/" "${BACKUP_DIR}/runtime/"
+fi
+if test -d "${SETTINGS_DIR}"; then
+  sudo mkdir -p "${BACKUP_DIR}/settings"
+  sudo rsync -a "${SETTINGS_DIR}/" "${BACKUP_DIR}/settings/"
+fi
 
-The main features of PlayTime include:
+test -f "${BACKUP_DIR}/plugin/main.py" || {
+  echo "Backup verification failed: ${BACKUP_DIR}/plugin/main.py is missing." >&2
+  exit 1
+}
 
-* Weekly and monthly reports: Get insights into your gaming habits over different time periods.
-* Overall summary: View your total playtime across all games.
-* Data migration: Import your playtime data from other plugins, such as SteamLessTimes and MetaDeck.
-* Manual playtime adjustment: If needed, you can manually change your overall playtime through the settings.
+sudo rsync -a --delete "${STAGING_DIR}/SDH-PlayTime/" "${PLUGIN_DIR}/"
+sudo chown -R deck:deck "${PLUGIN_DIR}"
+sudo systemctl start plugin_loader.service
+sudo systemctl is-active --quiet plugin_loader.service
+sudo systemctl status --no-pager plugin_loader.service
+```
 
-## Contributing
+The plugin stores playtime databases under its Decky runtime directory, including the legacy `storage.db` and per-user `users/<SteamID>/storage.db` files. Its frontend settings use the established `decky-loader-SDH-Playtime` storage key. The upgrade above deliberately replaces only `PLUGIN_DIR`; it backs up runtime/settings paths and leaves them in place.
 
-Contributions to PlayTime are welcome! If you would like to contribute, please follow these steps:
+If the loader does not become active, roll back the plugin files from the timestamped backup, then restart and inspect its status:
 
-1. Fork the PlayTime repository.
-2. Create a new branch for your feature or bug fix.
-3. Make the necessary changes in your branch.
-4. Commit your changes and push them to your fork.
-5. Submit a pull request to the main PlayTime repository.
+```bash
+set -euo pipefail
 
-Please ensure your code follows the project's coding conventions and includes appropriate tests.
+PLUGIN_DIR='/home/deck/homebrew/plugins/SDH-PlayTime'
+BACKUP_DIR='/home/deck/backups/SDH-PlayTime/remix-upgrade-REPLACE_WITH_TIMESTAMP'
 
-## Acknowledgements
+test -d "${BACKUP_DIR}/plugin" || {
+  echo "Backup not found: ${BACKUP_DIR}/plugin" >&2
+  exit 1
+}
+sudo systemctl stop plugin_loader.service
+sudo rsync -a --delete "${BACKUP_DIR}/plugin/" "${PLUGIN_DIR}/"
+sudo chown -R deck:deck "${PLUGIN_DIR}"
+sudo systemctl start plugin_loader.service
+sudo systemctl status --no-pager plugin_loader.service
+```
 
-We would like to thank the contributors and supporters of PlayTime for their valuable contributions and feedback.
+Do not restore the backed-up runtime or settings directory for a simple code rollback: the in-place upgrade does not replace them. Keep the timestamped backup until PlayTime works normally in Gaming Mode.
 
-Special thanks to the Decky Plugin Loader project for providing the infrastructure and support for developing plugins on the SteamDeck console.
+## Features
 
-## Contact
+- Weekly and monthly reports to show gaming habits over time.
+- An overall playtime summary for Steam and non-Steam games.
+- Data migration from SteamLessTimes and MetaDeck.
+- Manual playtime adjustments and configurable presentation.
+- Custom non-Steam cover art; see [Custom Covers](docs/covers.md).
 
-If you have any questions, suggestions, or need assistance with PlayTime, feel free to contact us at 
-Discord [PlayTime support thread](https://discord.com/channels/960281551428522045/1087800823846813716) in official [Decky Loader 
-Discord](https://discord.com/invite/U88fbeHyzt) server
-We appreciate your feedback!
+## Development and upstream contributions
 
-Happy gaming with **PlayTime**!
+This remix uses pnpm 10, Bun, and Python through ephemeral `uv`. Release packaging and CI are described by the repository tooling; end-user installations should use GitHub Release archives rather than building from source.
+
+For a change suitable for upstream, follow [Upstream contribution flow](CONTRIBUTING_UPSTREAM.md). For remix-only differences and their status, see the durable [patch ledger](PATCHES.md).
+
+## Credits and support
+
+This remix is based on [SDH-PlayTime by its upstream contributors](https://github.com/0u73r-h34v3n/SDH-PlayTime). Credit remains with the original authors, contributors, Decky Loader, and the broader Steam Deck homebrew community. The Ko-fi button above remains for the upstream project author.
+
+For upstream PlayTime discussion, see the [PlayTime support thread](https://discord.com/channels/960281551428522045/1087800823846813716) in the [Decky Loader Discord](https://discord.com/invite/U88fbeHyzt). Upstream support and remix support are separate boundaries.
