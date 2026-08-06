@@ -418,7 +418,8 @@ function hasConfirmedRegularPayload(
 		result.payloadStatus !== "reachable" ||
 		((request.launcherKind === "direct" || request.launcherKind === "heroic") &&
 			result.payloadKind !== "file") ||
-		(request.launcherKind === "flatpak" && result.payloadKind !== "directory") ||
+		(request.launcherKind === "flatpak" &&
+			result.payloadKind !== "directory") ||
 		typeof result.payloadPath !== "string" ||
 		result.payloadPath.length === 0
 	) {
@@ -433,7 +434,7 @@ function hasConfirmedRegularPayload(
 			: request.launcherKind === "flatpak"
 				? result.metadataStatus === "not_requested" &&
 					result.provenance === "untrusted_hint"
-		: false;
+				: false;
 }
 
 function makeFlatpakInstallProbeRequest(
@@ -684,7 +685,10 @@ export async function buildGamePresenceSnapshot(
 				}
 				continue;
 			}
-			for (const [index, { candidate, request, flatpakAppId }] of batch.entries()) {
+			for (const [
+				index,
+				{ candidate, request, flatpakAppId },
+			] of batch.entries()) {
 				const result = response.results[index];
 				if (!result || !resolverResultMatchesRequest(result, request)) {
 					markResolverUnknown(candidate, "resolver_inconsistent");
@@ -794,7 +798,9 @@ function runtimeNativeInventory(): GamePresenceInventory {
 
 function runtimeNonSteamInventory(): GamePresenceInventory {
 	const deckDesktopApps =
-		typeof collectionStore !== "undefined" ? collectionStore.deckDesktopApps : null;
+		typeof collectionStore !== "undefined"
+			? collectionStore.deckDesktopApps
+			: null;
 	const deckDesktopRows =
 		deckDesktopApps?.apps instanceof Map
 			? Array.from(deckDesktopApps.apps.values())
@@ -861,7 +867,8 @@ function runtimeNativeInstallProbe(): NativeInstallProbe | undefined {
 			const primaryClientData = app.per_client_data?.[0];
 			if (primaryClientData && typeof primaryClientData === "object") {
 				const isAvailable =
-					typeof primaryClientData.is_available_on_current_platform === "boolean";
+					typeof primaryClientData.is_available_on_current_platform ===
+					"boolean";
 				if (isAvailable) {
 					return {
 						status: primaryClientData.is_available_on_current_platform
@@ -916,7 +923,9 @@ export async function refreshCurrentGamePresenceSnapshot(
 			runtime.nativeInstallProbe ?? runtimeNativeInstallProbe(),
 		checkFlatpakInstall:
 			runtime.checkFlatpakInstall ??
-			runtimeFlatpakInstallProbe((requests) => Backend.resolveGamePayloads(requests)),
+			runtimeFlatpakInstallProbe((requests) =>
+				Backend.resolveGamePayloads(requests),
+			),
 		resolvePayloads: Backend.resolveGamePayloads,
 	});
 }

@@ -700,7 +700,12 @@ describe("buildGamePresenceSnapshot", () => {
 	test("marks native entries with explicit not-installed evidence as unavailable inventory", async () => {
 		backendCallHandler = async (method: unknown) => {
 			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
-				return [{ game: { id: "10", name: "Uninstalled Runtime Game" }, duration: 12 }];
+				return [
+					{
+						game: { id: "10", name: "Uninstalled Runtime Game" },
+						duration: 12,
+					},
+				];
 			}
 			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
 				return { results: [reachableResult()], error: null };
@@ -1007,28 +1012,28 @@ describe("buildGamePresenceSnapshot", () => {
 				};
 			}
 		).appStore = {
-				allApps: [
-					{
-						appid: 0x80000001,
-						display_name: "Flatpak Runtime Game",
-						app_type: APP_TYPE.THIRD_PARTY,
-					},
-				],
-			};
-
-			(
-				globalThis as unknown as {
-					collectionStore: {
-						deckDesktopApps: {
-							apps: Map<number, { appid: number; display_name: string }>;
-						};
-					};
-				}
-			).collectionStore = {
-				deckDesktopApps: {
-					apps: new Map(),
+			allApps: [
+				{
+					appid: 0x80000001,
+					display_name: "Flatpak Runtime Game",
+					app_type: APP_TYPE.THIRD_PARTY,
 				},
-			};
+			],
+		};
+
+		(
+			globalThis as unknown as {
+				collectionStore: {
+					deckDesktopApps: {
+						apps: Map<number, { appid: number; display_name: string }>;
+					};
+				};
+			}
+		).collectionStore = {
+			deckDesktopApps: {
+				apps: new Map(),
+			},
+		};
 
 		const snapshot = await refreshCurrentGamePresenceSnapshot({
 			getAppDetails: async () => flatpakDetails(1234),
@@ -1050,7 +1055,9 @@ describe("buildGamePresenceSnapshot", () => {
 	test("falls back to appStore install metadata when BIsAppInstalled is unavailable", async () => {
 		backendCallHandler = async (method: unknown) => {
 			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
-				return [{ game: { id: "10", name: "Native Runtime Game" }, duration: 12 }];
+				return [
+					{ game: { id: "10", name: "Native Runtime Game" }, duration: 12 },
+				];
 			}
 			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
 				return { results: [reachableResult()], error: null };
@@ -1105,7 +1112,9 @@ describe("buildGamePresenceSnapshot", () => {
 	test("falls back to appStore per_client_data install metadata when direct probe is unavailable", async () => {
 		backendCallHandler = async (method: unknown) => {
 			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
-				return [{ game: { id: "10", name: "Native Runtime Game" }, duration: 12 }];
+				return [
+					{ game: { id: "10", name: "Native Runtime Game" }, duration: 12 },
+				];
 			}
 			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
 				return { results: [reachableResult()], error: null };

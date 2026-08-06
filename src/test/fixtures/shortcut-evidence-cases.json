@@ -67,7 +67,7 @@
 			}
 		},
 		{
-				"id": "cemu-appimage-is-not-a-direct-payload",
+			"id": "cemu-appimage-is-not-a-direct-payload",
 			"source": {
 				"repository": "0u73r-h34v3n/SDH-PlayTime",
 				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
@@ -76,14 +76,14 @@
 			"input": {
 				"strShortcutExe": "/home/deck/Applications/Cemu.AppImage"
 			},
-				"expected": {
-					"status": "unknown",
-					"launcherKind": "unknown",
-					"externalIdentityHints": {}
-				}
-			},
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
+		},
 		{
-				"id": "duckstation-appimage-is-not-a-direct-payload",
+			"id": "duckstation-appimage-is-not-a-direct-payload",
 			"source": {
 				"repository": "0u73r-h34v3n/SDH-PlayTime",
 				"commit": "c37e62331ea35511b81c23ae08b71c487dfa6f44",
@@ -92,11 +92,11 @@
 			"input": {
 				"strShortcutExe": "/home/deck/Applications/DuckStation.AppImage"
 			},
-				"expected": {
-					"status": "unknown",
-					"launcherKind": "unknown",
-					"externalIdentityHints": {}
-				}
+			"expected": {
+				"status": "unknown",
+				"launcherKind": "unknown",
+				"externalIdentityHints": {}
+			}
 		},
 		{
 			"id": "cartridges-appimage-is-not-a-direct-payload",
@@ -212,7 +212,7 @@
 			}
 		},
 		{
-				"id": "generic-flatpak-app-is-not-a-direct-payload",
+			"id": "generic-flatpak-app-is-not-a-direct-payload",
 			"source": {
 				"repository": "0u73r-h34v3n/SDH-PlayTime",
 				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
@@ -223,12 +223,12 @@
 				"strShortcutExe": "/usr/bin/flatpak",
 				"strShortcutLaunchOptions": "run org.example.CustomLauncher -- /home/deck/Games/Game.exe"
 			},
-				"expected": {
-					"status": "ambiguous",
-					"launcherKind": "flatpak",
-					"externalIdentityHints": {}
-				}
-			},
+			"expected": {
+				"status": "ambiguous",
+				"launcherKind": "flatpak",
+				"externalIdentityHints": {}
+			}
+		},
 		{
 			"id": "emulator-appimage-is-not-a-direct-payload",
 			"source": {
