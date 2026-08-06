@@ -176,6 +176,37 @@ describe("getPathToGame compatibility", () => {
 		]);
 	});
 
+	test("returns undefined when a Flatpak launch command resolves to a directory payload", async () => {
+		setShortcutDetails({
+			strShortcutExe: "/usr/bin/flatpak",
+			strShortcutLaunchOptions: "run org.example.some-game",
+			strFlatpakAppID: "org.example.some-game",
+		});
+		callHandler = async () => ({
+			results: [
+				{
+					launcherKind: "flatpak",
+					classificationStatus: "recognized",
+					metadataStatus: "not_requested",
+					payloadStatus: "reachable",
+					payloadKind: "directory",
+					provenance: "untrusted_hint",
+					reasonCode: null,
+					payloadPath: "/home/deck/.var/app/org.example.some-game",
+				},
+			],
+			error: null,
+		});
+
+		await expect(getPathToGame(1)).resolves.toBeUndefined();
+		expect(calls[0]?.[1]).toEqual([
+			expect.objectContaining({
+				launcherKind: "flatpak",
+				classificationStatus: "recognized",
+			}),
+		]);
+	});
+
 	for (const executable of [
 		"/home/deck/.local/bin/UbisoftConnect-latest.exe",
 		"/home/deck/.local/bin/DuckStation-master.exe",

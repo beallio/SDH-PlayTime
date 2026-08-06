@@ -87,6 +87,35 @@ class SteamShortcutCatalogTest(unittest.TestCase):
             outcome.request.normalized.executable_tokens, ("/games/Verified Game.exe",)
         )
 
+    def test_binds_a_nonheroic_flatpak_request_to_matching_shortcuts_records(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            executable = "/usr/bin/flatpak"
+            launch_options = "run org.example.flatpak.game"
+            app_name = "Flatpak Game"
+            write_shortcuts(
+                home / ".local/share/Steam/userdata/123/config/shortcuts.vdf",
+                [
+                    {
+                        "appname": app_name,
+                        "exe": executable,
+                        "launchoptions": launch_options,
+                    },
+                ],
+            )
+
+            outcome = SteamShortcutCatalog(home, lambda: "123").get_request(
+                shortcut_app_id(executable, app_name)
+            )
+
+        self.assertIsNotNone(outcome.request)
+        assert outcome.request is not None
+        self.assertEqual(outcome.request.launcher_kind, "flatpak")
+        self.assertEqual(
+            outcome.request.normalized.executable_tokens, ("/usr/bin/flatpak",)
+        )
+        self.assertEqual(outcome.request.normalized.launch_option_tokens, ("run", "org.example.flatpak.game"))
+
     def test_refuses_distinct_records_with_the_same_shortcut_app_id(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)

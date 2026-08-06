@@ -7,6 +7,7 @@ const FLATPAK_LAUNCHERS = {
 	lutris: "net.lutris.lutris",
 	bottles: "com.usebottles.bottles",
 } as const;
+const FLATPAK_APP_ID_PATTERN = /^[a-zA-Z0-9._+-]+$/;
 
 const SHARED_OR_LAUNCHER_BINARIES = new Set([
 	"bottles",
@@ -324,6 +325,27 @@ function hasFlatpakLauncher(
 		normalized.launchOptionTokens[0] === "run" &&
 		normalized.launchOptionTokens[1]?.toLowerCase() === lowercaseLauncherId
 	);
+}
+
+function isFlatpakAppId(value: string | undefined): value is string {
+	if (!value || value.length > 255) {
+		return false;
+	}
+	return FLATPAK_APP_ID_PATTERN.test(value);
+}
+
+function parseFlatpakAppId(tokens: readonly string[]): string | undefined {
+	for (let index = 0; index < tokens.length; index++) {
+		if (tokens[index] !== "run") {
+			continue;
+		}
+		const appId = tokens[index + 1];
+		if (!appId || !isFlatpakAppId(appId)) {
+			return;
+		}
+		return appId;
+	}
+	return;
 }
 
 function isHeroicExecutable(path: string | undefined): boolean {
@@ -833,6 +855,30 @@ function classifyBottles(
 	});
 }
 
+function classifyFlatpak(
+	normalized: NormalizedShortcutFields,
+): ShortcutEvidenceClassification | undefined {
+	const executable = getExecutableToken(normalized);
+	const flatpakAppId =
+		normalized.flatpakAppId && isFlatpakAppId(normalized.flatpakAppId)
+			? normalized.flatpakAppId
+			: parseFlatpakAppId(normalized.launchOptionTokens);
+	if (!flatpakAppId) {
+		return;
+	}
+
+	if (
+		basename(executable) !== "flatpak" ||
+		!isStructurallyCompleteCommand(normalized)
+	) {
+		return ambiguous("flatpak");
+	}
+
+	return recognized("flatpak", {
+		flatpakAppId: flatpakAppId,
+	});
+}
+
 function classifyEmudeck(
 	normalized: NormalizedShortcutFields,
 ): ShortcutEvidenceClassification | undefined {
@@ -953,6 +999,7 @@ export function classifyShortcutEvidence(
 		classifyHeroic,
 		classifyLutris,
 		classifyBottles,
+		classifyFlatpak,
 		classifyEmudeck,
 	];
 	const hasUnterminatedQuote = [
@@ -1012,7 +1059,9 @@ function checksumRequest(
 ): GameResolutionRequest | undefined {
 	const supportedCandidate =
 		evidence.status === "recognized" &&
-		(evidence.launcherKind === "direct" || evidence.launcherKind === "heroic");
+		(evidence.launcherKind === "direct" ||
+			evidence.launcherKind === "heroic" ||
+			evidence.launcherKind === "flatpak");
 	if (!supportedCandidate) {
 		return;
 	}

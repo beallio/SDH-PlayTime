@@ -27,6 +27,7 @@ from py_modules.db.dao import Dao
 from py_modules.files import Files
 from py_modules.game_resolution import (
     GameChecksumCoordinator,
+    FlatpakExecutableAdapter,
     GameResolutionCoordinator,
     MAX_RESOLUTION_BATCH_SIZE,
 )
@@ -383,6 +384,18 @@ class Plugin:
                 )
                 return convert_keys_to_camel_case(fallback.to_dict())
             return {"results": [], "error": "probe_failure"}
+
+    async def is_flatpak_app_installed(self, flatpak_app_id: str) -> bool:
+        try:
+            return (
+                FlatpakExecutableAdapter.installed_payload_path(flatpak_app_id)
+                is not None
+            )
+        except Exception:
+            decky.logger.exception(
+                "[is_flatpak_app_installed] Unable to determine flatpak install state"
+            )
+            return False
 
     async def get_games_dictionary(self):
         try:

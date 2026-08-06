@@ -11,7 +11,7 @@ MAX_METADATA_CANDIDATE_LENGTH = 512
 MAX_SHORTCUT_TOKENS = 32
 
 LauncherKind = Literal[
-    "direct", "heroic", "lutris", "bottles", "emudeck-srm", "unknown"
+    "direct", "heroic", "lutris", "bottles", "emudeck-srm", "flatpak", "unknown"
 ]
 ClassificationStatus = Literal["recognized", "unknown", "ambiguous"]
 MetadataStatus = Literal["not_requested", "not_found", "resolved", "invalid"]
@@ -32,7 +32,7 @@ ReasonCode = Literal[
 ]
 
 _LAUNCHER_KINDS = frozenset(
-    {"direct", "heroic", "lutris", "bottles", "emudeck-srm", "unknown"}
+    {"direct", "heroic", "lutris", "bottles", "emudeck-srm", "flatpak", "unknown"}
 )
 _CLASSIFICATION_STATUSES = frozenset({"recognized", "unknown", "ambiguous"})
 

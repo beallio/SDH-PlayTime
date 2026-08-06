@@ -1,13 +1,16 @@
 import os
 import stat
 import tempfile
+import subprocess
 import threading
 import time
 import unittest
 from pathlib import Path
+from collections.abc import Callable
 
 from py_modules.game_resolution import (
     DirectExecutableAdapter,
+    FlatpakExecutableAdapter,
     FilesystemProbe,
     GameResolutionCoordinator,
     MountEntry,
@@ -37,6 +40,27 @@ def direct_entry(path: str, **overrides: object) -> dict[str, object]:
     return entry
 
 
+def flatpak_entry(app_id: str, **overrides: object) -> dict[str, object]:
+    normalized = {
+        "shortcutExe": "/usr/bin/flatpak",
+        "shortcutLaunchOptions": f"run {app_id}",
+        "shortcutStartDir": None,
+        "flatpakAppId": app_id,
+        "executableTokens": ["/usr/bin/flatpak"],
+        "launchOptionTokens": ["run", app_id],
+        "startDirTokens": [],
+        "commandTokens": ["/usr/bin/flatpak", "run", app_id],
+    }
+    entry: dict[str, object] = {
+        "launcherKind": "flatpak",
+        "classificationStatus": "recognized",
+        "normalized": normalized,
+        "metadataCandidates": [],
+    }
+    entry.update(overrides)
+    return entry
+
+
 class GameResolutionCoordinatorTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -49,6 +73,12 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
         return GameResolutionCoordinator(
             adapters=[DirectExecutableAdapter(probe or FilesystemProbe())]
         )
+
+    def flatpak_coordinator(
+        self, run_info: Callable[[str], subprocess.CompletedProcess[str]] | None = None
+    ) -> GameResolutionCoordinator:
+        adapter = FlatpakExecutableAdapter() if run_info is None else FlatpakExecutableAdapter(run_info=run_info)
+        return GameResolutionCoordinator(adapters=[adapter])
 
     def test_resolves_regular_native_appimage_and_windows_payload_files(self) -> None:
         coordinator = self.coordinator()
@@ -259,6 +289,60 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
             .results[0]
         )
 
+        self.assertEqual(result.reason_code, "malformed")
+
+    def test_resolves_installed_flatpak_reference_to_a_directory_payload(self) -> None:
+        app_id = "com.example.flatpak.game"
+
+        def info(_: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                args=("flatpak", "info", "--show-location", app_id),
+                returncode=0,
+                stdout="/home/deck/.var/app/com.example.flatpak.game\n",
+                stderr="",
+            )
+
+        result = (
+            self.flatpak_coordinator(info)
+            .resolve_batch([flatpak_entry(app_id)])
+            .results[0]
+        )
+
+        self.assertEqual(result.payload_status, "reachable")
+        self.assertEqual(result.payload_kind, "directory")
+        self.assertEqual(
+            result.payload_path, "/home/deck/.var/app/com.example.flatpak.game"
+        )
+        self.assertEqual(result.provenance, "untrusted_hint")
+
+    def test_marks_uninstalled_flatpak_games_as_unreachable(self) -> None:
+        app_id = "com.example.missing.flatpak"
+
+        def info(_: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                args=("flatpak", "info", "--show-location", app_id),
+                returncode=1,
+                stdout="",
+                stderr="",
+            )
+
+        result = (
+            self.flatpak_coordinator(info)
+            .resolve_batch([flatpak_entry(app_id)])
+            .results[0]
+        )
+
+        self.assertEqual(result.payload_status, "unreachable")
+        self.assertEqual(result.reason_code, "payload_missing")
+
+    def test_rejects_flatpak_requests_with_invalid_app_id(self) -> None:
+        result = (
+            self.flatpak_coordinator()
+            .resolve_batch([flatpak_entry("com.example bad id")])
+            .results[0]
+        )
+
+        self.assertEqual(result.payload_status, "unknown")
         self.assertEqual(result.reason_code, "malformed")
 
     def test_rejects_malformed_start_directories_without_probing(self) -> None:

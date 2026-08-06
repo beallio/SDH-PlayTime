@@ -56,7 +56,7 @@ export type GamePresenceCandidate = {
 	name: string;
 	source: GamePresenceSource | "unknown";
 	/** Present only when recognized shortcut evidence identified a supported launcher. */
-	launcherKind?: "direct" | "heroic";
+	launcherKind?: "direct" | "heroic" | "flatpak";
 	tracked: boolean;
 	recentPlaytime: number;
 	totalPlaytime: number;
@@ -92,6 +92,8 @@ export type NativeInstallEvidence =
 	| { status: "not_installed" }
 	| { status: "unknown" };
 
+type FlatpakInstallProbe = (flatpakAppId: string) => Promise<boolean>;
+
 export type NativeInstallProbe = (
 	appId: number,
 ) => NativeInstallEvidence | Promise<NativeInstallEvidence>;
@@ -103,6 +105,7 @@ export type GamePresenceBuildInput = {
 	runningAppIds: ReadonlyArray<number | string>;
 	getAppDetails: (appId: number) => Promise<AppDetailsResult>;
 	nativeInstallProbe?: NativeInstallProbe;
+	checkFlatpakInstall?: FlatpakInstallProbe;
 	resolvePayloads: (
 		requests: GameResolutionRequest[],
 	) => Promise<GameResolutionBatchResponse>;
@@ -126,6 +129,7 @@ export type GamePresenceRuntimeAdapter = {
 	runningAppIds?: () => ReadonlyArray<number | string>;
 	getAppDetails?: (appId: number) => Promise<AppDetailsResult>;
 	nativeInstallProbe?: NativeInstallProbe;
+	checkFlatpakInstall?: FlatpakInstallProbe;
 };
 
 type CandidateSeed = {
@@ -141,6 +145,16 @@ type ReliableNativeInstallApi = {
 	Apps?: {
 		BIsAppInstalled?: (appId: number) => boolean;
 	};
+};
+
+type RuntimeAppStoreGame = {
+	appid: number;
+	app_type?: number;
+	installed?: boolean;
+	is_installed?: boolean;
+	per_client_data?: Array<{
+		is_available_on_current_platform?: boolean;
+	}>;
 };
 
 const sourceOrder: readonly GamePresenceSource[] = [
@@ -402,7 +416,9 @@ function hasConfirmedRegularPayload(
 	if (
 		!resolverResultMatchesRequest(result, request) ||
 		result.payloadStatus !== "reachable" ||
-		result.payloadKind !== "file" ||
+		((request.launcherKind === "direct" || request.launcherKind === "heroic") &&
+			result.payloadKind !== "file") ||
+		(request.launcherKind === "flatpak" && result.payloadKind !== "directory") ||
 		typeof result.payloadPath !== "string" ||
 		result.payloadPath.length === 0
 	) {
@@ -414,7 +430,58 @@ function hasConfirmedRegularPayload(
 		: request.launcherKind === "heroic"
 			? result.metadataStatus === "resolved" &&
 				result.provenance === "heroic_metadata"
-			: false;
+			: request.launcherKind === "flatpak"
+				? result.metadataStatus === "not_requested" &&
+					result.provenance === "untrusted_hint"
+		: false;
+}
+
+function makeFlatpakInstallProbeRequest(
+	flatpakAppId: string,
+): GameResolutionRequest {
+	return {
+		launcherKind: "flatpak",
+		classificationStatus: "recognized",
+		normalized: {
+			flatpakAppId,
+			executableTokens: ["/usr/bin/flatpak"],
+			launchOptionTokens: ["run", flatpakAppId],
+			startDirTokens: [],
+			commandTokens: ["/usr/bin/flatpak"],
+		},
+		metadataCandidates: [],
+	};
+}
+
+async function checkFlatpakInstallWithResolverFallback(
+	flatpakAppId: string,
+	resolvePayloads: GamePresenceBuildInput["resolvePayloads"],
+): Promise<boolean> {
+	const request = makeFlatpakInstallProbeRequest(flatpakAppId);
+	const response = await resolvePayloads([request]);
+	if (response.error) {
+		throw new Error(response.error);
+	}
+	if (response.results.length !== 1) {
+		throw new Error("incomplete flatpak probe payload batch");
+	}
+	const result = response.results[0];
+	if (!result || !resolverResultMatchesRequest(result, request)) {
+		throw new Error("inconsistent flatpak probe payload result");
+	}
+	if (result.payloadStatus === "reachable") {
+		if (hasConfirmedRegularPayload(result, request)) {
+			return true;
+		}
+		throw new Error("incomplete flatpak probe payload");
+	}
+	if (
+		result.payloadStatus === "unreachable" &&
+		result.reasonCode === "payload_missing"
+	) {
+		return false;
+	}
+	throw new Error(result.reasonCode ?? "resolver_unreachable");
 }
 
 /**
@@ -484,6 +551,12 @@ export async function buildGamePresenceSnapshot(
 									reason("native_install_state_unknown", "native_steam"),
 								],
 							};
+			if (evidence.status === "not_installed") {
+				candidate.inventory = {
+					status: "unknown",
+					reasons: [reason("native_not_installed", "native_steam")],
+				};
+			}
 		} catch {
 			candidate.availability = {
 				status: "unknown",
@@ -498,6 +571,7 @@ export async function buildGamePresenceSnapshot(
 			candidate.availability.status !== "running" &&
 			candidate.source === "non_steam",
 	);
+	const flatpakInstallProbe = input.checkFlatpakInstall;
 	const detailCache = new Map<number, Promise<AppDetailsResult>>();
 	const getCachedDetails = (appId: number) => {
 		let details = detailCache.get(appId);
@@ -510,6 +584,7 @@ export async function buildGamePresenceSnapshot(
 	const resolutionCandidates: Array<
 		| {
 				candidate: (typeof candidates)[number];
+				flatpakAppId?: string;
 				request: GameResolutionRequest;
 		  }
 		| undefined
@@ -548,7 +623,8 @@ export async function buildGamePresenceSnapshot(
 			if (
 				evidence.status !== "recognized" ||
 				(evidence.launcherKind !== "direct" &&
-					evidence.launcherKind !== "heroic")
+					evidence.launcherKind !== "heroic" &&
+					evidence.launcherKind !== "flatpak")
 			) {
 				candidate.availability = {
 					status: "unknown",
@@ -559,6 +635,7 @@ export async function buildGamePresenceSnapshot(
 			candidate.launcherKind = evidence.launcherKind;
 			resolutionCandidates[index] = {
 				candidate,
+				flatpakAppId: evidence.normalized.flatpakAppId,
 				request: {
 					launcherKind: evidence.launcherKind,
 					classificationStatus: evidence.status,
@@ -574,9 +651,14 @@ export async function buildGamePresenceSnapshot(
 			candidate,
 		): candidate is {
 			candidate: GamePresenceCandidate;
+			flatpakAppId?: string;
 			request: GameResolutionRequest;
 		} => candidate !== undefined,
 	);
+	const flatpakProbeCandidates: Array<{
+		candidate: GamePresenceCandidate;
+		flatpakAppId: string;
+	}> = [];
 	for (
 		let start = 0;
 		start < resolvableCandidates.length;
@@ -602,7 +684,7 @@ export async function buildGamePresenceSnapshot(
 				}
 				continue;
 			}
-			for (const [index, { candidate, request }] of batch.entries()) {
+			for (const [index, { candidate, request, flatpakAppId }] of batch.entries()) {
 				const result = response.results[index];
 				if (!result || !resolverResultMatchesRequest(result, request)) {
 					markResolverUnknown(candidate, "resolver_inconsistent");
@@ -615,6 +697,20 @@ export async function buildGamePresenceSnapshot(
 								status: "unknown",
 								reasons: [reason("resolver_inconsistent", "resolver")],
 							};
+					continue;
+				}
+				if (
+					request.launcherKind === "flatpak" &&
+					result.payloadStatus === "unknown" &&
+					result.reasonCode === "malformed" &&
+					typeof flatpakAppId === "string" &&
+					flatpakAppId.length > 0 &&
+					flatpakInstallProbe
+				) {
+					flatpakProbeCandidates.push({
+						candidate,
+						flatpakAppId,
+					});
 					continue;
 				}
 				candidate.availability =
@@ -639,6 +735,32 @@ export async function buildGamePresenceSnapshot(
 			for (const { candidate } of batch) {
 				markResolverUnknown(candidate, "resolver_failed");
 			}
+		}
+	}
+
+	if (flatpakProbeCandidates.length > 0) {
+		const flatpakChecks = await Promise.allSettled(
+			flatpakProbeCandidates.map(async ({ candidate, flatpakAppId }) => ({
+				candidate,
+				installed: await flatpakInstallProbe?.(flatpakAppId),
+			})),
+		);
+		for (const check of flatpakChecks) {
+			if (check.status !== "fulfilled") {
+				continue;
+			}
+			if (
+				check.value.candidate.availability.status !== "unknown" ||
+				check.value.installed === undefined
+			) {
+				continue;
+			}
+			check.value.candidate.availability = check.value.installed
+				? { status: "reachable", reasons: [] }
+				: {
+						status: "unreachable",
+						reasons: [reason("resolver_unreachable", "resolver")],
+					};
 		}
 	}
 
@@ -671,20 +793,22 @@ function runtimeNativeInventory(): GamePresenceInventory {
 }
 
 function runtimeNonSteamInventory(): GamePresenceInventory {
-	if (
-		typeof collectionStore !== "undefined" &&
-		collectionStore.deckDesktopApps
-	) {
+	const deckDesktopApps =
+		typeof collectionStore !== "undefined" ? collectionStore.deckDesktopApps : null;
+	const deckDesktopRows =
+		deckDesktopApps?.apps instanceof Map
+			? Array.from(deckDesktopApps.apps.values())
+			: [];
+	if (deckDesktopRows.length > 0) {
 		return {
 			status: "complete",
-			apps: Array.from(collectionStore.deckDesktopApps.apps.values()).map(
-				(app) => ({
-					id: String(app.appid),
-					name: app.display_name,
-				}),
-			),
+			apps: deckDesktopRows.map((app) => ({
+				id: String(app.appid),
+				name: app.display_name,
+			})),
 		};
 	}
+
 	if (typeof appStore === "undefined" || !Array.isArray(appStore.allApps)) {
 		return { status: "missing", apps: [] };
 	}
@@ -709,12 +833,62 @@ function runtimeRunningAppIds() {
 function runtimeNativeInstallProbe(): NativeInstallProbe | undefined {
 	const runtime = globalThis as unknown as {
 		SteamClient?: ReliableNativeInstallApi;
+		appStore?: {
+			allApps?: RuntimeAppStoreGame[];
+		};
 	};
 	const probe = runtime.SteamClient?.Apps?.BIsAppInstalled;
 	if (typeof probe !== "function") {
-		return;
+		if (!runtime.appStore || !Array.isArray(runtime.appStore.allApps)) {
+			return;
+		}
+
+		return (appId: number) => {
+			const app = runtime.appStore?.allApps?.find(
+				(game) => game.appid === appId,
+			);
+			if (!app) {
+				return { status: "unknown" };
+			}
+			if (typeof app.installed === "boolean") {
+				return { status: app.installed ? "installed" : "not_installed" };
+			}
+			if (typeof app.is_installed === "boolean") {
+				return {
+					status: app.is_installed ? "installed" : "not_installed",
+				};
+			}
+			const primaryClientData = app.per_client_data?.[0];
+			if (primaryClientData && typeof primaryClientData === "object") {
+				const isAvailable =
+					typeof primaryClientData.is_available_on_current_platform === "boolean";
+				if (isAvailable) {
+					return {
+						status: primaryClientData.is_available_on_current_platform
+							? "installed"
+							: "not_installed",
+					};
+				}
+			}
+			return { status: "unknown" };
+		};
 	}
 	return (appId) => ({ status: probe(appId) ? "installed" : "not_installed" });
+}
+
+function runtimeFlatpakInstallProbe(
+	resolvePayloads: GamePresenceBuildInput["resolvePayloads"],
+): FlatpakInstallProbe {
+	return async (flatpakAppId: string) => {
+		try {
+			return await Backend.isFlatpakAppInstalled(flatpakAppId);
+		} catch {
+			return await checkFlatpakInstallWithResolverFallback(
+				flatpakAppId,
+				resolvePayloads,
+			);
+		}
+	};
 }
 
 /** Refreshes caller-provided read sources without writing presence or associations. */
@@ -740,6 +914,9 @@ export async function refreshCurrentGamePresenceSnapshot(
 		getAppDetails: runtime.getAppDetails ?? getAppDetailsResult,
 		nativeInstallProbe:
 			runtime.nativeInstallProbe ?? runtimeNativeInstallProbe(),
+		checkFlatpakInstall:
+			runtime.checkFlatpakInstall ??
+			runtimeFlatpakInstallProbe((requests) => Backend.resolveGamePayloads(requests)),
 		resolvePayloads: Backend.resolveGamePayloads,
 	});
 }

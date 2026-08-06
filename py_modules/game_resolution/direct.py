@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import re
 import stat
+import subprocess
 from pathlib import Path
 from typing import Literal
 
@@ -92,7 +94,30 @@ _KNOWN_SHELL_STEMS = frozenset(
 _UNSAFE_LITERAL_CHARACTERS = frozenset("?*[]{}|&;<>")
 _WRAPPER_SUFFIXES = (".desktop", ".py", ".sh")
 _NATIVE_SUFFIXES = frozenset({".x86", ".x86_64"})
+_FLATPAK_APP_ID_CHARACTERS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._+"
+)
+_FLATPAK_INFO_TIMEOUT_SECONDS = 0.25
 DirectPayloadType = Literal["windows", "appimage", "native"]
+
+
+def _run_flatpak_info(app_id: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ("flatpak", "info", "--show-location", app_id),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        timeout=_FLATPAK_INFO_TIMEOUT_SECONDS,
+        text=True,
+    )
+
+
+def _is_flatpak_app_id(value: str | None) -> bool:
+    return (
+        isinstance(value, str)
+        and 0 < len(value) <= 255
+        and all(character in _FLATPAK_APP_ID_CHARACTERS for character in value)
+    )
 
 
 def _basename(path: str) -> str:
@@ -270,3 +295,83 @@ class DirectExecutableAdapter:
             or "/steam/steamapps/common/proton" in lowercase
             or lowercase.endswith(_WRAPPER_SUFFIXES)
         )
+
+
+class FlatpakExecutableAdapter:
+    launcher_kind = "flatpak"
+
+    def __init__(
+        self,
+        run_info: Callable[[str], subprocess.CompletedProcess[str]] = _run_flatpak_info,
+    ) -> None:
+        self._run_info = run_info
+
+    def resolve(self, request: ResolutionRequest) -> ResolutionResult:
+        if request.classification_status == "ambiguous":
+            return ResolutionResult.unknown(
+                request.launcher_kind, request.classification_status, "ambiguous"
+            )
+        if request.classification_status != "recognized":
+            return ResolutionResult.unknown(
+                request.launcher_kind, request.classification_status, "missing"
+            )
+        try:
+            app_id = self._validated_candidate(request)
+        except RequestValidationError as error:
+            return ResolutionResult.unknown(
+                request.launcher_kind,
+                request.classification_status,
+                error.reason_code,
+            )
+
+        try:
+            payload_path = self.installed_payload_path(app_id, self._run_info)
+        except RequestValidationError as error:
+            return ResolutionResult.unknown(
+                request.launcher_kind, request.classification_status, error.reason_code
+            )
+
+        if payload_path is None:
+            return ResolutionResult.unreachable(request, "payload_missing")
+
+        return ResolutionResult(
+            launcher_kind=request.launcher_kind,
+            classification_status=request.classification_status,
+            metadata_status="not_requested",
+            payload_status="reachable",
+            payload_kind="directory",
+            provenance="untrusted_hint",
+            reason_code=None,
+            payload_path=payload_path,
+        )
+
+    @staticmethod
+    def installed_payload_path(
+        app_id: str,
+        run_info: Callable[[str], subprocess.CompletedProcess[str]] = _run_flatpak_info,
+    ) -> str | None:
+        if not _is_flatpak_app_id(app_id):
+            return None
+
+        try:
+            result = run_info(app_id)
+        except TimeoutError as error:
+            raise RequestValidationError("probe_failure") from error
+        except OSError as error:
+            raise RequestValidationError("probe_failure") from error
+
+        if result.returncode != 0:
+            return None
+        location = result.stdout.strip()
+        if not location:
+            return None
+        return location
+
+    @staticmethod
+    def _validated_candidate(request: ResolutionRequest) -> str:
+        app_id = request.normalized.flatpak_app_id
+        if app_id is None:
+            raise RequestValidationError("malformed")
+        if not _is_flatpak_app_id(app_id):
+            raise RequestValidationError("malformed")
+        return app_id

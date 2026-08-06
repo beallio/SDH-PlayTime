@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { BACK_END_API } from "@src/constants";
+import { APP_TYPE, BACK_END_API } from "@src/constants";
 
 const backendCalls: unknown[][] = [];
 let backendCallHandler: (...args: unknown[]) => Promise<unknown>;
@@ -43,6 +43,17 @@ function directDetails(appId: number) {
 		status: "success" as const,
 		details: {
 			strShortcutExe: `"/games/${appId}.exe"`,
+		} as AppDetails,
+	};
+}
+
+function flatpakDetails(appId: number) {
+	return {
+		status: "success" as const,
+		details: {
+			strShortcutExe: "/usr/bin/flatpak",
+			strShortcutLaunchOptions: `run com.example.flatpak.${appId}`,
+			strFlatpakAppID: `com.example.flatpak.${appId}`,
 		} as AppDetails,
 	};
 }
@@ -292,6 +303,126 @@ describe("buildGamePresenceSnapshot", () => {
 			["20", "direct"],
 			["21", "heroic"],
 		]);
+	});
+
+	test("supports Flatpak resolver outcomes for completed non-Steam inventory", async () => {
+		const nonSteamId = String(0x80000001);
+		const snapshot = await build({
+			candidates: [
+				{ game: { id: nonSteamId, name: "Flatpak Shortcut" }, duration: 1 },
+			],
+			nonSteamInventory: {
+				status: "complete",
+				apps: [{ id: nonSteamId, name: "Flatpak Shortcut" }],
+			},
+			getAppDetails: async () => flatpakDetails(1234),
+			resolvePayloads: async () => ({
+				results: [
+					{
+						launcherKind: "flatpak",
+						classificationStatus: "recognized",
+						metadataStatus: "not_requested",
+						payloadStatus: "reachable",
+						payloadKind: "directory",
+						provenance: "untrusted_hint",
+						reasonCode: null,
+						payloadPath: "/var/lib/flatpak/app/com.example.flatpak.1234",
+					},
+				],
+				error: null,
+			}),
+		});
+
+		expect(snapshot.candidates).toHaveLength(1);
+		expect(snapshot.candidates[0]).toMatchObject({
+			id: nonSteamId,
+			source: "non_steam",
+			inventory: { status: "current", reasons: [] },
+			launcherKind: "flatpak",
+			availability: {
+				status: "reachable",
+				label: "Available on this Deck",
+			},
+		});
+	});
+
+	test("falls back to flatpak install probe when payload is malformed", async () => {
+		const nonSteamId = String(0x80000001);
+		const snapshot = await build({
+			candidates: [
+				{ game: { id: nonSteamId, name: "Flatpak Shortcut" }, duration: 1 },
+			],
+			nonSteamInventory: {
+				status: "complete",
+				apps: [{ id: nonSteamId, name: "Flatpak Shortcut" }],
+			},
+			getAppDetails: async () => flatpakDetails(1234),
+			resolvePayloads: async () => ({
+				results: [
+					{
+						launcherKind: "flatpak",
+						classificationStatus: "recognized",
+						metadataStatus: "not_requested",
+						payloadStatus: "unknown",
+						payloadKind: "directory",
+						provenance: "untrusted_hint",
+						reasonCode: "malformed",
+						payloadPath: null,
+					},
+				],
+				error: null,
+			}),
+			checkFlatpakInstall: async () => true,
+		});
+
+		expect(snapshot.candidates[0]).toMatchObject({
+			id: nonSteamId,
+			source: "non_steam",
+			availability: {
+				status: "reachable",
+				label: "Available on this Deck",
+			},
+		});
+	});
+
+	test("preserves flatpak unknown state when flatpak probe is rejected", async () => {
+		const nonSteamId = String(0x80000001);
+		const snapshot = await build({
+			candidates: [
+				{ game: { id: nonSteamId, name: "Flatpak Shortcut" }, duration: 1 },
+			],
+			nonSteamInventory: {
+				status: "complete",
+				apps: [{ id: nonSteamId, name: "Flatpak Shortcut" }],
+			},
+			getAppDetails: async () => flatpakDetails(1234),
+			resolvePayloads: async () => ({
+				results: [
+					{
+						launcherKind: "flatpak",
+						classificationStatus: "recognized",
+						metadataStatus: "not_requested",
+						payloadStatus: "unknown",
+						payloadKind: "directory",
+						provenance: "untrusted_hint",
+						reasonCode: "malformed",
+						payloadPath: null,
+					},
+				],
+				error: null,
+			}),
+			checkFlatpakInstall: async () => {
+				throw new Error("probe unavailable");
+			},
+		});
+
+		expect(snapshot.candidates[0]).toMatchObject({
+			id: nonSteamId,
+			availability: {
+				status: "unknown",
+				reasons: [],
+			},
+		});
 	});
 
 	test("preserves inventory while a shortcut drive disconnects and reconnects", async () => {
@@ -566,6 +697,66 @@ describe("buildGamePresenceSnapshot", () => {
 		).toEqual([]);
 	});
 
+	test("marks native entries with explicit not-installed evidence as unavailable inventory", async () => {
+		backendCallHandler = async (method: unknown) => {
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [{ game: { id: "10", name: "Uninstalled Runtime Game" }, duration: 12 }];
+			}
+			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+				return { results: [reachableResult()], error: null };
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
+
+		(
+			globalThis as unknown as {
+				appStore: {
+					allApps: { appid: number; display_name: string; app_type: number }[];
+				};
+			}
+		).appStore = {
+			allApps: [
+				{
+					appid: 10,
+					display_name: "Uninstalled Runtime Game",
+					app_type: 0,
+				},
+			],
+		};
+		(
+			globalThis as unknown as {
+				SteamClient: { Apps?: { BIsAppInstalled: (appId: number) => boolean } };
+			}
+		).SteamClient = {
+			Apps: {
+				BIsAppInstalled: () => false,
+			},
+		};
+
+		const snapshot = await refreshCurrentGamePresenceSnapshot({
+			getAppDetails: async () => {
+				return {
+					status: "failure",
+					reason: "missing-details",
+				};
+			},
+		});
+
+		expect(snapshot.candidates).toHaveLength(1);
+		expect(snapshot.candidates[0]).toMatchObject({
+			id: "10",
+			source: "native_steam",
+			inventory: {
+				status: "unknown",
+				reasons: [{ code: "native_not_installed", source: "native_steam" }],
+			},
+			availability: {
+				status: "unreachable",
+				reasons: [{ code: "native_not_installed", source: "native_steam" }],
+			},
+		});
+	});
+
 	test("uses complete runtime inventory snapshots by default for installed Steam and non-Steam visibility", async () => {
 		const nonSteamId = String(0x80000001);
 		backendCallHandler = async (method: unknown) => {
@@ -663,6 +854,343 @@ describe("buildGamePresenceSnapshot", () => {
 			label: "Available on this Deck",
 		});
 		expect(candidatesById[nonSteamId]?.launcherKind).toBe("direct");
+	});
+
+	test("falls back to appStore for non-Steam runtime inventory when Deck desktop apps collection is empty", async () => {
+		const nonSteamId = String(0x80000001);
+		backendCallHandler = async (method: unknown) => {
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [
+					{ game: { id: "10", name: "Native Runtime Game" }, duration: 12 },
+					{
+						game: { id: nonSteamId, name: "Shortcut Runtime Game" },
+						duration: 1,
+					},
+				];
+			}
+			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+				return { results: [reachableResult()], error: null };
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
+
+		(
+			globalThis as unknown as {
+				appStore: {
+					allApps: {
+						appid: number;
+						display_name: string;
+						app_type: number;
+					}[];
+				};
+			}
+		).appStore = {
+			allApps: [
+				{
+					appid: 10,
+					display_name: "Native Runtime Game",
+					app_type: 0,
+				},
+				{
+					appid: 0x80000001,
+					display_name: "Shortcut Runtime Game",
+					app_type: APP_TYPE.THIRD_PARTY,
+				},
+			],
+		};
+		(
+			globalThis as unknown as {
+				collectionStore: {
+					deckDesktopApps: {
+						apps: Map<number, { appid: number; display_name: string }>;
+					};
+				};
+			}
+		).collectionStore = {
+			deckDesktopApps: {
+				apps: new Map(),
+			},
+		};
+		(
+			globalThis as unknown as {
+				SteamClient: { Apps?: { BIsAppInstalled: (appId: number) => boolean } };
+			}
+		).SteamClient = {
+			Apps: {
+				BIsAppInstalled: (appId: number) => appId === 10,
+			},
+		};
+
+		const snapshot = await refreshCurrentGamePresenceSnapshot({
+			getAppDetails: async (appId) => directDetails(appId),
+		});
+
+		const candidatesById = Object.fromEntries(
+			snapshot.candidates.map((candidate) => [candidate.id, candidate]),
+		);
+		expect(candidatesById[nonSteamId]?.source).toBe("non_steam");
+		expect(candidatesById[nonSteamId]?.inventory).toEqual({
+			status: "current",
+			reasons: [],
+		});
+		expect(candidatesById[nonSteamId]?.availability).toEqual({
+			status: "reachable",
+			reasons: [],
+			label: "Available on this Deck",
+		});
+	});
+
+	test("recovers flatpak availability when is_flatpak_app_installed is unavailable", async () => {
+		const nonSteamId = String(0x80000001);
+		let flatpakProbeAttempts = 0;
+		backendCallHandler = async (method: unknown) => {
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [
+					{
+						game: {
+							id: nonSteamId,
+							name: "Flatpak Runtime Game",
+						},
+						duration: 1,
+					},
+				];
+			}
+			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+				flatpakProbeAttempts += 1;
+				if (flatpakProbeAttempts === 1) {
+					return {
+						results: [
+							{
+								launcherKind: "flatpak",
+								classificationStatus: "recognized",
+								metadataStatus: "not_requested",
+								payloadStatus: "unknown",
+								payloadKind: "directory",
+								provenance: "untrusted_hint",
+								reasonCode: "malformed",
+								payloadPath: null,
+							},
+						],
+						error: null,
+					};
+				}
+				return {
+					results: [
+						{
+							launcherKind: "flatpak",
+							classificationStatus: "recognized",
+							metadataStatus: "not_requested",
+							payloadStatus: "reachable",
+							payloadKind: "directory",
+							provenance: "untrusted_hint",
+							reasonCode: null,
+							payloadPath: "/var/lib/flatpak/app/com.example.flatpak.1234",
+						},
+					],
+					error: null,
+				};
+			}
+			if (method === BACK_END_API.IS_FLATPAK_APP_INSTALLED) {
+				throw new Error("METHOD_REJECTED");
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
+
+		(
+			globalThis as unknown as {
+				appStore: {
+					allApps: {
+						appid: number;
+						display_name: string;
+						app_type: number;
+					}[];
+				};
+			}
+		).appStore = {
+				allApps: [
+					{
+						appid: 0x80000001,
+						display_name: "Flatpak Runtime Game",
+						app_type: APP_TYPE.THIRD_PARTY,
+					},
+				],
+			};
+
+			(
+				globalThis as unknown as {
+					collectionStore: {
+						deckDesktopApps: {
+							apps: Map<number, { appid: number; display_name: string }>;
+						};
+					};
+				}
+			).collectionStore = {
+				deckDesktopApps: {
+					apps: new Map(),
+				},
+			};
+
+		const snapshot = await refreshCurrentGamePresenceSnapshot({
+			getAppDetails: async () => flatpakDetails(1234),
+		});
+
+		expect(snapshot.candidates).toHaveLength(1);
+		expect(snapshot.candidates[0]).toMatchObject({
+			id: nonSteamId,
+			source: "non_steam",
+			availability: {
+				status: "reachable",
+				reasons: [],
+				label: "Available on this Deck",
+			},
+		});
+		expect(flatpakProbeAttempts).toBe(2);
+	});
+
+	test("falls back to appStore install metadata when BIsAppInstalled is unavailable", async () => {
+		backendCallHandler = async (method: unknown) => {
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [{ game: { id: "10", name: "Native Runtime Game" }, duration: 12 }];
+			}
+			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+				return { results: [reachableResult()], error: null };
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
+
+		(
+			globalThis as unknown as {
+				appStore: {
+					allApps: {
+						appid: number;
+						display_name: string;
+						app_type: number;
+						installed?: boolean;
+					}[];
+				};
+			}
+		).appStore = {
+			allApps: [
+				{
+					appid: 10,
+					display_name: "Native Runtime Game",
+					app_type: 0,
+					installed: true,
+				},
+			],
+		};
+
+		const snapshot = await refreshCurrentGamePresenceSnapshot({
+			getAppDetails: async () => {
+				return {
+					status: "failure",
+					reason: "missing-details",
+				};
+			},
+		});
+
+		expect(snapshot.candidates).toHaveLength(1);
+		expect(snapshot.candidates[0]?.source).toBe("native_steam");
+		expect(snapshot.candidates[0]?.inventory).toEqual({
+			status: "current",
+			reasons: [],
+		});
+		expect(snapshot.candidates[0]?.availability).toEqual({
+			status: "reachable",
+			reasons: [],
+			label: "Installed",
+		});
+	});
+
+	test("falls back to appStore per_client_data install metadata when direct probe is unavailable", async () => {
+		backendCallHandler = async (method: unknown) => {
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [{ game: { id: "10", name: "Native Runtime Game" }, duration: 12 }];
+			}
+			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+				return { results: [reachableResult()], error: null };
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
+
+		(
+			globalThis as unknown as {
+				appStore: {
+					allApps: {
+						appid: number;
+						display_name: string;
+						app_type: number;
+						per_client_data?: Array<{
+							is_available_on_current_platform: boolean;
+						}>;
+					}[];
+				};
+			}
+		).appStore = {
+			allApps: [
+				{
+					appid: 10,
+					display_name: "Native Runtime Game",
+					app_type: 0,
+					per_client_data: [{ is_available_on_current_platform: true }],
+				},
+			],
+		};
+
+		const reachableSnapshot = await refreshCurrentGamePresenceSnapshot({
+			getAppDetails: async () => {
+				return {
+					status: "failure",
+					reason: "missing-details",
+				};
+			},
+		});
+
+		expect(reachableSnapshot.candidates).toHaveLength(1);
+		expect(reachableSnapshot.candidates[0]?.availability).toEqual({
+			status: "reachable",
+			reasons: [],
+			label: "Installed",
+		});
+
+		(
+			globalThis as unknown as {
+				appStore: {
+					allApps: {
+						appid: number;
+						display_name: string;
+						app_type: number;
+						per_client_data?: Array<{
+							is_available_on_current_platform: boolean;
+						}>;
+					}[];
+				};
+			}
+		).appStore = {
+			allApps: [
+				{
+					appid: 10,
+					display_name: "Native Runtime Game",
+					app_type: 0,
+					per_client_data: [{ is_available_on_current_platform: false }],
+				},
+			],
+		};
+
+		const unreachableSnapshot = await refreshCurrentGamePresenceSnapshot({
+			getAppDetails: async () => {
+				return {
+					status: "failure",
+					reason: "missing-details",
+				};
+			},
+		});
+
+		expect(unreachableSnapshot.candidates).toHaveLength(1);
+		expect(unreachableSnapshot.candidates[0]?.availability).toEqual({
+			status: "unreachable",
+			reasons: [{ code: "native_not_installed", source: "native_steam" }],
+		});
 	});
 
 	test("bounds detail reads and does not write while refreshing caller-provided sources", async () => {

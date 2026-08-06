@@ -2,6 +2,7 @@ type ShortcutLauncherKind =
 	| "direct"
 	| "heroic"
 	| "lutris"
+	| "flatpak"
 	| "bottles"
 	| "emudeck-srm"
 	| "unknown";
@@ -27,6 +28,7 @@ interface NormalizedShortcutFields {
 }
 
 interface ShortcutExternalIdentityHints {
+	flatpakAppId?: string;
 	heroicAppName?: string;
 	heroicRunner?: string;
 	heroicAltExe?: string;

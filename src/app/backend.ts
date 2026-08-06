@@ -153,6 +153,15 @@ export class Backend {
 		);
 	}
 
+	public static async isFlatpakAppInstalled(
+		flatpakAppId: string,
+	): Promise<boolean> {
+		return await call<[string], boolean>(
+			BACK_END_API.IS_FLATPAK_APP_INSTALLED,
+			flatpakAppId,
+		);
+	}
+
 	public static async getGamesDictionary(): Promise<Array<GameDictionary>> {
 		return await call<[], Array<GameDictionary>>(
 			BACK_END_API.GET_GAMES_DICTIONARY,

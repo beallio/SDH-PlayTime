@@ -6,7 +6,7 @@ import threading
 import time
 from typing import Callable, Protocol
 
-from .direct import DirectExecutableAdapter
+from .direct import DirectExecutableAdapter, FlatpakExecutableAdapter
 from .filesystem import FilesystemProbe
 from .heroic import HeroicAdapter
 from .models import (
@@ -55,7 +55,11 @@ class GameResolutionCoordinator:
             raise ValueError("resolution time budgets and worker cap must be positive")
         if adapters is None:
             probe = FilesystemProbe()
-            adapters = (DirectExecutableAdapter(probe), HeroicAdapter(probe))
+            adapters = (
+                DirectExecutableAdapter(probe),
+                FlatpakExecutableAdapter(),
+                HeroicAdapter(probe),
+            )
         self._adapter_registry = AdapterRegistry(adapters)
         self._entry_timeout_seconds = entry_timeout_seconds
         self._batch_timeout_seconds = batch_timeout_seconds

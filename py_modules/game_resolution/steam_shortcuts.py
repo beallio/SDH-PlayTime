@@ -19,6 +19,9 @@ _MAX_SHORTCUTS_FILE_BYTES: Final = 8 * 1024 * 1024
 _MAX_SHORTCUTS_RECORDS: Final = 4_096
 _MAX_VDF_DEPTH: Final = 16
 _HEROIC_FLATPAK_APP_ID: Final = "com.heroicgameslauncher.hgl"
+_FLATPAK_APP_ID_CHARACTERS: Final = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._+"
+)
 
 
 class ShortcutParseError(ValueError):
@@ -218,6 +221,25 @@ def _is_heroic_shortcut(
     )
 
 
+def _flatpak_application_id(value: str | None) -> bool:
+    return (
+        isinstance(value, str)
+        and 0 < len(value) <= MAX_SHORTCUT_FIELD_LENGTH
+        and all(character in _FLATPAK_APP_ID_CHARACTERS for character in value)
+    )
+
+
+def _parse_flatpak_app_id(tokens: tuple[str, ...]) -> str | None:
+    for index, token in enumerate(tokens):
+        if token != "run":
+            continue
+        app_id = tokens[index + 1] if index + 1 < len(tokens) else None
+        if app_id is None or not _flatpak_application_id(app_id):
+            return None
+        return app_id
+    return None
+
+
 def _request_from_record(record: Mapping[str, object]) -> ResolutionRequest | None:
     executable = _normalized_text(record.get("exe"))
     if executable is None or _normalized_text(record.get("appname")) is None:
@@ -243,6 +265,11 @@ def _request_from_record(record: Mapping[str, object]) -> ResolutionRequest | No
     )
     if _is_heroic_shortcut(normalized):
         return ResolutionRequest("heroic", "recognized", normalized, ())
+    if (
+        flatpak_app_id is None
+        and _parse_flatpak_app_id(normalized.launch_option_tokens) is not None
+    ):
+        return ResolutionRequest("flatpak", "recognized", normalized, ())
     if (
         flatpak_app_id is None
         and len(executable_tokens) == 1
