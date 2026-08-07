@@ -319,9 +319,13 @@ function hasFlatpakLauncher(
 	launcherId: string,
 ): boolean {
 	const launcherAppId = parseFlatpakAppId(normalized.launchOptionTokens);
+	const normalizedFlatpakAppId = normalized.flatpakAppId;
 	const lowercaseLauncherId = launcherId.toLowerCase();
+	const normalizedFlatpakAppIdLower = normalizedFlatpakAppId?.toLowerCase();
 	return (
 		basename(getExecutableToken(normalized)) === "flatpak" &&
+		(!normalizedFlatpakAppIdLower ||
+			launcherAppId?.toLowerCase() === normalizedFlatpakAppIdLower) &&
 		Boolean(
 			launcherAppId && launcherAppId.toLowerCase() === lowercaseLauncherId,
 		)
@@ -873,10 +877,18 @@ function classifyFlatpak(
 	normalized: NormalizedShortcutFields,
 ): ShortcutEvidenceClassification | undefined {
 	const executable = getExecutableToken(normalized);
+	const parsedFlatpakAppId = parseFlatpakAppId(normalized.launchOptionTokens);
 	const flatpakAppId =
 		normalized.flatpakAppId && isFlatpakAppId(normalized.flatpakAppId)
 			? normalized.flatpakAppId
-			: parseFlatpakAppId(normalized.launchOptionTokens);
+			: parsedFlatpakAppId;
+	if (
+		parsedFlatpakAppId &&
+		normalized.flatpakAppId &&
+		normalized.flatpakAppId.toLowerCase() !== parsedFlatpakAppId.toLowerCase()
+	) {
+		return;
+	}
 	if (!flatpakAppId) {
 		return;
 	}

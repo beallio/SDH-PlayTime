@@ -225,7 +225,9 @@
 			"expected": {
 				"status": "recognized",
 				"launcherKind": "flatpak",
-				"externalIdentityHints": {}
+				"externalIdentityHints": {
+					"flatpakAppId": "org.example.flatpak.ludusavi"
+				}
 			}
 		},
 		{
