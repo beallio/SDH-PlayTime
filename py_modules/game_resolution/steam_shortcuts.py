@@ -207,8 +207,7 @@ def _is_heroic_shortcut(
     options = normalized.launch_option_tokens
     flatpak_app_id = (
         _parse_flatpak_app_id(options)
-        if executable
-        and Path(executable[0]).name.casefold() == "flatpak"
+        if executable and Path(executable[0]).name.casefold() == "flatpak"
         else None
     )
     if len(executable) != 1:
