@@ -285,19 +285,20 @@ def _request_from_record(record: Mapping[str, object]) -> ResolutionRequest | No
 
 
 def _record_for_app_id(
-	record: Mapping[str, object], app_id: int
+    record: Mapping[str, object], app_id: int
 ) -> tuple[tuple[tuple[str, object], ...], ResolutionRequest | None] | None:
-	executable = _normalized_text(record.get("exe"))
-	app_name = _normalized_text(record.get("appname"))
-	if not isinstance(record.get("appid"), int):
-		raise ShortcutParseError("shortcut record has an invalid app id")
-	stored_unsigned = record["appid"] & 0xFFFFFFFF
-	if stored_unsigned != app_id:
-		return None
-	if executable is None or app_name is None:
-		raise ShortcutParseError("shortcut record has an inconsistent app ID")
+    executable = _normalized_text(record.get("exe"))
+    app_name = _normalized_text(record.get("appname"))
+    raw_app_id = record.get("appid")
+    if not isinstance(raw_app_id, int):
+        raise ShortcutParseError("shortcut record has an invalid app id")
+    stored_unsigned = raw_app_id & 0xFFFFFFFF
+    if stored_unsigned != app_id:
+        return None
+    if executable is None or app_name is None:
+        raise ShortcutParseError("shortcut record has an inconsistent app ID")
 
-	return _record_evidence(record), _request_from_record(record)
+    return _record_evidence(record), _request_from_record(record)
 
 
 def _record_evidence(record: Mapping[str, object]) -> tuple[tuple[str, object], ...]:
