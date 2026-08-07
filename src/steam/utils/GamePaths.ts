@@ -639,6 +639,23 @@ function recognized(
 	};
 }
 
+function withFlatpakIdentityHint(
+	evidence: ShortcutEvidenceClassification,
+	normalized: NormalizedShortcutFields,
+): ShortcutEvidenceClassification {
+	if (normalized.flatpakAppId || !evidence.externalIdentityHints.flatpakAppId) {
+		return { ...evidence, normalized };
+	}
+
+	return {
+		...evidence,
+		normalized: {
+			...normalized,
+			flatpakAppId: evidence.externalIdentityHints.flatpakAppId,
+		},
+	};
+}
+
 function ambiguous(
 	launcherKind: Exclude<ShortcutLauncherKind, "unknown">,
 	externalIdentityHints: ShortcutExternalIdentityHints = {},
@@ -1035,27 +1052,29 @@ export function classifyShortcutEvidence(
 	].some((value) => parseTokens(value).hasUnterminatedQuote);
 
 	if (hasUnterminatedQuote) {
-		return { ...unknown(), normalized };
+		return withFlatpakIdentityHint(unknown(), normalized);
 	}
 
 	const anchors = launcherAnchors(normalized);
 	const protocols = launcherProtocols(normalized);
 	if (anchors.length > 1 || protocols.length > 1) {
 		return {
-			...ambiguous(anchors[0] ?? protocols[0] ?? "heroic"),
-			normalized,
+			...withFlatpakIdentityHint(
+				ambiguous(anchors[0] ?? protocols[0] ?? "heroic"),
+				normalized,
+			),
 		};
 	}
 	if (protocols.some((protocol) => !anchors.includes(protocol))) {
 		return anchors[0]
-			? { ...ambiguous(anchors[0]), normalized }
-			: { ...unknown(), normalized };
+			? withFlatpakIdentityHint(ambiguous(anchors[0]), normalized)
+			: withFlatpakIdentityHint(unknown(), normalized);
 	}
 
 	for (const parser of parsers) {
 		const result = parser(normalized);
 		if (result) {
-			return { ...result, normalized };
+			return withFlatpakIdentityHint(result, normalized);
 		}
 	}
 
@@ -1064,13 +1083,10 @@ export function classifyShortcutEvidence(
 		isStructurallyCompleteCommand(normalized) &&
 		isDirectPayloadCandidate(directPayload)
 	) {
-		return {
-			...recognized("direct"),
-			normalized,
-		};
+		return withFlatpakIdentityHint(recognized("direct"), normalized);
 	}
 
-	return { ...unknown(), normalized };
+	return withFlatpakIdentityHint(unknown(), normalized);
 }
 
 // NOTE(ynhhoJ): https://github.com/0u73r-h34v3n/chrono-deck/blob/master/src/utils/steam/getPathToGameFileByLaunchCommand.ts

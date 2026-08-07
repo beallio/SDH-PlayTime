@@ -58,6 +58,16 @@ function flatpakDetails(appId: number) {
 	};
 }
 
+function flatpakDetailsFromLaunchHints(appId: number) {
+	return {
+		status: "success" as const,
+		details: {
+			strShortcutExe: "/usr/bin/flatpak",
+			strShortcutLaunchOptions: `run --user --command=ludusavi com.example.flatpak.${appId}`,
+		} as AppDetails,
+	};
+}
+
 function reachableResult() {
 	return {
 		launcherKind: "direct" as const,
@@ -402,6 +412,50 @@ describe("buildGamePresenceSnapshot", () => {
 				label: "Available on this Deck",
 			},
 		});
+	});
+
+	test("hydrates flatpak evidence from launch hints when explicit flatpak ID is missing", async () => {
+		const nonSteamId = String(0x80000001);
+		let flatpakProbeAttempts = 0;
+		const snapshot = await build({
+			candidates: [
+				{ game: { id: nonSteamId, name: "Flatpak Shortcut" }, duration: 1 },
+			],
+			nonSteamInventory: {
+				status: "complete",
+				apps: [{ id: nonSteamId, name: "Flatpak Shortcut" }],
+			},
+			getAppDetails: async () => flatpakDetailsFromLaunchHints(1234),
+			resolvePayloads: async () => ({
+				results: [
+					{
+						launcherKind: "flatpak",
+						classificationStatus: "recognized",
+						metadataStatus: "not_requested",
+						payloadStatus: "unknown",
+						payloadKind: "directory",
+						provenance: "untrusted_hint",
+						reasonCode: "malformed",
+						payloadPath: null,
+					},
+				],
+				error: null,
+			}),
+			checkFlatpakInstall: async () => {
+				flatpakProbeAttempts += 1;
+				return true;
+			},
+		});
+
+		expect(snapshot.candidates[0]).toMatchObject({
+			id: nonSteamId,
+			source: "non_steam",
+			availability: {
+				status: "reachable",
+				label: "Available on this Deck",
+			},
+		});
+		expect(flatpakProbeAttempts).toBe(1);
 	});
 
 	test("preserves flatpak unknown state when flatpak probe is rejected", async () => {
