@@ -29,7 +29,8 @@ const maybeRouterHook = ((): RouterHook | undefined => {
 	if (
 		typeof deckyApiDefault === "object" &&
 		deckyApiDefault !== null &&
-		typeof (deckyApiDefault as { routerHook?: unknown }).routerHook !== "undefined"
+		typeof (deckyApiDefault as { routerHook?: unknown }).routerHook !==
+			"undefined"
 	) {
 		return (deckyApiDefault as { routerHook?: RouterHook }).routerHook;
 	}

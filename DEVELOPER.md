@@ -91,6 +91,36 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_release_archive tests.t
 scripts/orchestration/run-quality-gates
 ```
 
+## Local pre-push gate (recommended)
+
+To prevent CI quality regressions from recurring, set up the repo-level `pre-push` hook once per clone:
+
+```bash
+git config --local core.hooksPath .githooks
+```
+
+If your environment doesn’t honor hooks, run this before every push:
+
+```bash
+scripts/orchestration/run-quality-gates
+```
+
+## Local pre-commit fast guard (recommended)
+
+For quick local feedback before committing, add this fast guard by setting the same hooks path:
+
+```bash
+git config --local core.hooksPath .githooks
+```
+
+It runs:
+
+```bash
+pnpm exec biome check .
+```
+
+This catches common formatter/linter drift early, while the full quality gates still run on push.
+
 ## Deferred live Steam Deck checklist
 
 Run this only on a Deck with representative native Steam, direct-shortcut, and Heroic

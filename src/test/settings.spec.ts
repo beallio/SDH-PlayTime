@@ -59,7 +59,6 @@ describe("Settings", () => {
 			isEnabledDetectionOfGamesByFileChecksum: 0,
 			isMergedPlaytimeEnabled: 0,
 			isStackedBarsPerGameEnabled: 0,
-			showKofiInQAM: 1,
 		});
 	});
 
@@ -75,7 +74,6 @@ describe("Settings", () => {
 			isStackedBarsPerGameEnabled: 1,
 			pieViewGamesLimit: "50",
 			chartColorSwatch: "DarkMuted",
-			showKofiInQAM: "0",
 			chartLegendDisplay: "both",
 			pieViewQAMHeight: "200",
 			weekStartsOn: "0",
@@ -96,7 +94,6 @@ describe("Settings", () => {
 			isStackedBarsPerGameEnabled: true,
 			pieViewGamesLimit: 50,
 			chartColorSwatch: "DarkMuted",
-			showKofiInQAM: false,
 			chartLegendDisplay: "both",
 			pieViewQAMHeight: 200,
 			weekStartsOn: 0,
@@ -106,7 +103,7 @@ describe("Settings", () => {
 	});
 
 	test("migrates version 1 settings with merged playtime disabled", async () => {
-		store({ settingsVersion: 1, showKofiInQAM: 0 });
+		store({ settingsVersion: 1 });
 
 		const result = await new Settings().get();
 
@@ -131,7 +128,6 @@ describe("Settings", () => {
 			isStackedBarsPerGameEnabled: 2,
 			pieViewGamesLimit: 17,
 			chartColorSwatch: "Bright",
-			showKofiInQAM: {},
 			chartLegendDisplay: "sometimes",
 			pieViewQAMHeight: 225,
 			weekStartsOn: 2,
@@ -206,16 +202,6 @@ describe("Settings", () => {
 
 	test("coerces all supported boolean storage representations", async () => {
 		for (const value of [true, 1, "1", "true"] as const) {
-			store({ showKofiInQAM: value });
-			expect((await new Settings().get()).showKofiInQAM).toBe(true);
-		}
-
-		for (const value of [false, 0, "0", "false"] as const) {
-			store({ showKofiInQAM: value });
-			expect((await new Settings().get()).showKofiInQAM).toBe(false);
-		}
-
-		for (const value of [true, 1, "1", "true"] as const) {
 			store({ isMergedPlaytimeEnabled: value });
 			expect((await new Settings().get()).isMergedPlaytimeEnabled).toBe(true);
 		}
@@ -284,7 +270,6 @@ describe("Settings", () => {
 			isEnabledDetectionOfGamesByFileChecksum: true,
 			isMergedPlaytimeEnabled: true,
 			isStackedBarsPerGameEnabled: true,
-			showKofiInQAM: false,
 		});
 
 		expect(writes).toHaveLength(1);
@@ -295,7 +280,6 @@ describe("Settings", () => {
 			isEnabledDetectionOfGamesByFileChecksum: 1,
 			isMergedPlaytimeEnabled: 1,
 			isStackedBarsPerGameEnabled: 1,
-			showKofiInQAM: 0,
 		});
 	});
 
@@ -320,11 +304,7 @@ describe("Settings", () => {
 
 		await settings.save(DEFAULTS);
 		await settings.save({ ...DEFAULTS, isMergedPlaytimeEnabled: true });
-		await settings.save({
-			...DEFAULTS,
-			isMergedPlaytimeEnabled: true,
-			showKofiInQAM: false,
-		});
+		await settings.save({ ...DEFAULTS, isMergedPlaytimeEnabled: true });
 
 		expect(changes).toEqual([true]);
 
@@ -342,7 +322,6 @@ describe("Settings", () => {
 			settingsVersion: -1,
 			coverScale: 9,
 			displayTime: null,
-			showKofiInQAM: "invalid",
 		} as unknown as PlayTimeSettings);
 
 		expect(await settings.get()).toEqual(DEFAULTS);

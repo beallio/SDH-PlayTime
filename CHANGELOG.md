@@ -1,7 +1,4 @@
 <div align="center">
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/ynhhoj)
-
 </div>
 
 # Changelog
@@ -149,7 +146,6 @@ To enable this feature, set `Stacked bars per game` to `Yes` in `Settings > Gene
 
 - 2025 Year Retrospective: end-of-year recap with top games, total playtime, longest streak, and more.
 - The Weekly statistics view now shows a **chart legend** so you can easily identify which game corresponds to which bar color.
-- **Ko-fi support button** added to the Quick Access Menu and Settings.
 - **Pie chart height** in the Quick Access Menu is now adjustable in Settings.
 
 ### Changed
@@ -187,12 +183,6 @@ Don't forget to check your `2025` retrospective by accessing the button below in
 > Consider sharing your Year Stats on the Steam Deck subreddit! ^_^
 
 ---
-
-<div align="center">
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/ynhhoj)
-
-</div>
 
 ## [3.0.9] - 2025-11-24
 

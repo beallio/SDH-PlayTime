@@ -46,8 +46,6 @@ export interface PlayTimeSettings {
 	pieViewGamesLimit: PieViewGamesLimit;
 	/** Which color swatch to use from game cover images */
 	chartColorSwatch: VibrantSwatch;
-	/** Whether to show the Ko-fi support button in Quick Access Menu */
-	showKofiInQAM: boolean;
 	/** Which charts should display legends */
 	chartLegendDisplay: ChartLegendDisplay;
 	/** Height of PieView chart in Quick Access Menu (in pixels) */
@@ -87,7 +85,6 @@ function createDefaultSettings(): PlayTimeSettings {
 		isStackedBarsPerGameEnabled: false,
 		pieViewGamesLimit: -1,
 		chartColorSwatch: "Vibrant",
-		showKofiInQAM: true,
 		chartLegendDisplay: "none",
 		pieViewQAMHeight: 300,
 		weekStartsOn: 1,
@@ -241,7 +238,6 @@ function normalizeSettings(value: unknown): PlayTimeSettings {
 			vibrantSwatches,
 			defaults.chartColorSwatch,
 		),
-		showKofiInQAM: toBoolean(merged.showKofiInQAM) ?? defaults.showKofiInQAM,
 		chartLegendDisplay: oneOf(
 			merged.chartLegendDisplay,
 			chartLegendDisplays,
@@ -276,7 +272,6 @@ function toStoredSettings(settings: PlayTimeSettings): UnknownRecord {
 			+settings.isEnabledDetectionOfGamesByFileChecksum,
 		isMergedPlaytimeEnabled: +settings.isMergedPlaytimeEnabled,
 		isStackedBarsPerGameEnabled: +settings.isStackedBarsPerGameEnabled,
-		showKofiInQAM: +settings.showKofiInQAM,
 	};
 }
 

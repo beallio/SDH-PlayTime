@@ -18,16 +18,7 @@ import { GameCoverStyle } from "@src/components/GameCard";
 import logger from "@src/utils/logger";
 import { Navigation, ScrollPanelGroup } from "@decky/ui";
 import { FaHeart } from "react-icons/fa";
-import { KOFI_URL } from "@src/components/SupportBanner";
-import { SiKofi } from "react-icons/si";
-import { HiQrCode } from "react-icons/hi2";
-import { FocusableExt } from "@src/components/FocusableExt";
-import showKofiQrModal from "@src/utils/showKofiQrModal";
-import {
-	GAME_REPORT_ROUTE,
-	navigateToPage,
-	navigateToExternalWeb,
-} from "./navigation";
+import { GAME_REPORT_ROUTE, navigateToPage } from "./navigation";
 import {
 	GAMEPAD_BUTTON_B,
 	getDefaultReplayYear,
@@ -172,38 +163,8 @@ export function ReplayPage({ year }: { year?: number }) {
 					/>
 
 					<div className="replay-footer">
-						<div className="replay-footer-support-container">
-							<FocusableExt
-								onActivate={() => navigateToExternalWeb(KOFI_URL)}
-								className="replay-scroll-panel-group replay-footer-support-wrapper"
-							>
-								<button
-									onClick={() => navigateToExternalWeb(KOFI_URL)}
-									type="button"
-									className="replay-footer-support-btn"
-								>
-									<SiKofi size={18} />
-									<span>Support on Ko-fi</span>
-								</button>
-							</FocusableExt>
-
-							<FocusableExt
-								onActivate={() => showKofiQrModal()}
-								className="replay-scroll-panel-group"
-							>
-								<button
-									onClick={() => showKofiQrModal()}
-									type="button"
-									className="replay-footer-support-btn"
-									style={{ padding: "8px 12px" }}
-								>
-									<HiQrCode size={18} />
-								</button>
-							</FocusableExt>
-						</div>
-
 						<p className="replay-footer-text">
-							If you enjoy this plugin, consider buying me a coffee! ☕
+							Made with care for your gaming workflow.
 						</p>
 
 						<p className="replay-footer-credits">

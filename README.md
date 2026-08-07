@@ -7,8 +7,6 @@
 
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/ynhhoj)
-
 </div>
 
 ![PlayTime Logo](https://raw.githubusercontent.com/0u73r-h34v3n/PlayTime/refs/heads/master/assets/image.png)
@@ -182,6 +180,6 @@ For a change suitable for upstream, follow [Upstream contribution flow](CONTRIBU
 
 ## Credits and support
 
-This remix is based on [SDH-PlayTime by its upstream contributors](https://github.com/0u73r-h34v3n/SDH-PlayTime). Credit remains with the original authors, contributors, Decky Loader, and the broader Steam Deck homebrew community. The Ko-fi button above remains for the upstream project author.
+This remix is based on [SDH-PlayTime by its upstream contributors](https://github.com/0u73r-h34v3n/SDH-PlayTime). Credit remains with the original authors, contributors, Decky Loader, and the broader Steam Deck homebrew community.
 
 For upstream PlayTime discussion, see the [PlayTime support thread](https://discord.com/channels/960281551428522045/1087800823846813716) in the [Decky Loader Discord](https://discord.com/invite/U88fbeHyzt). Upstream support and remix support are separate boundaries.
