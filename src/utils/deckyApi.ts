@@ -21,10 +21,19 @@ const FALLBACK_ROUTER_HOOK: RouterHook = {
 };
 
 const maybeRouterHook = ((): RouterHook | undefined => {
-	return (
-		(deckyApi as { routerHook?: RouterHook }).routerHook ??
-		(deckyApi as { default?: { routerHook?: RouterHook } }).default?.routerHook
-	);
+	const deckyApiAny = deckyApi as Record<string, unknown>;
+	const deckyApiDefault = deckyApiAny.default;
+	if ("routerHook" in deckyApiAny) {
+		return deckyApiAny.routerHook as RouterHook;
+	}
+	if (
+		typeof deckyApiDefault === "object" &&
+		deckyApiDefault !== null &&
+		typeof (deckyApiDefault as { routerHook?: unknown }).routerHook !== "undefined"
+	) {
+		return (deckyApiDefault as { routerHook?: RouterHook }).routerHook;
+	}
+	return undefined;
 })();
 
 export const routerHook = maybeRouterHook ?? FALLBACK_ROUTER_HOOK;
