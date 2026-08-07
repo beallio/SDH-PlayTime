@@ -166,6 +166,8 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 	const selectedParentId = selectionState?.selectedParentId ?? null;
 	const ranking = selectionState?.ranking ?? null;
 	const additionMessages = selectionState?.additionMessages ?? {};
+	const trackedAnchorCandidates =
+		presence?.candidates?.filter((candidate) => candidate.tracked) ?? [];
 
 	const componentCards = useMemo(
 		() =>
@@ -188,11 +190,11 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 	const anchorCards = useMemo(
 		() =>
 			buildAssociationCandidateCards({
-				candidates: presence?.candidates ?? [],
+				candidates: trackedAnchorCandidates,
 				selectedParentId: null,
 				recommendedParentId: null,
 			}),
-		[presence],
+		[trackedAnchorCandidates],
 	);
 	const allMembersSelected = selectionState?.allMembersSelected ?? false;
 	const hasEnoughMembers = selectionState?.hasEnoughMembers ?? false;
