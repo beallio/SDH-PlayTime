@@ -318,18 +318,37 @@ function hasFlatpakLauncher(
 	normalized: NormalizedShortcutFields,
 	launcherId: string,
 ): boolean {
-	const launcherAppId = parseFlatpakAppId(normalized.launchOptionTokens);
+	const invocation = getFlatpakInvocation(normalized);
+	const launcherAppId = invocation
+		? parseFlatpakAppId(invocation.launchOptionTokens)
+		: undefined;
 	const normalizedFlatpakAppId = normalized.flatpakAppId;
 	const lowercaseLauncherId = launcherId.toLowerCase();
 	const normalizedFlatpakAppIdLower = normalizedFlatpakAppId?.toLowerCase();
 	return (
-		basename(getExecutableToken(normalized)) === "flatpak" &&
+		Boolean(invocation) &&
 		(!normalizedFlatpakAppIdLower ||
 			launcherAppId?.toLowerCase() === normalizedFlatpakAppIdLower) &&
 		Boolean(
 			launcherAppId && launcherAppId.toLowerCase() === lowercaseLauncherId,
 		)
 	);
+}
+
+function getFlatpakInvocation(
+	normalized: NormalizedShortcutFields,
+): { executableToken: string; launchOptionTokens: string[] } | undefined {
+	const commandTokens = normalized.commandTokens;
+	const flatpakTokenIndex = commandTokens.findIndex(
+		(token) => basename(token) === "flatpak",
+	);
+	if (flatpakTokenIndex === -1) {
+		return;
+	}
+	return {
+		executableToken: commandTokens[flatpakTokenIndex],
+		launchOptionTokens: commandTokens.slice(flatpakTokenIndex + 1),
+	};
 }
 
 function isFlatpakAppId(value: string | undefined): value is string {
@@ -893,8 +912,12 @@ function classifyBottles(
 function classifyFlatpak(
 	normalized: NormalizedShortcutFields,
 ): ShortcutEvidenceClassification | undefined {
-	const executable = getExecutableToken(normalized);
-	const parsedFlatpakAppId = parseFlatpakAppId(normalized.launchOptionTokens);
+	const invocation = getFlatpakInvocation(normalized);
+	const executable =
+		invocation?.executableToken ?? getExecutableToken(normalized);
+	const parsedFlatpakAppId = invocation
+		? parseFlatpakAppId(invocation.launchOptionTokens)
+		: parseFlatpakAppId(normalized.launchOptionTokens);
 	const flatpakAppId =
 		normalized.flatpakAppId && isFlatpakAppId(normalized.flatpakAppId)
 			? normalized.flatpakAppId
@@ -910,9 +933,20 @@ function classifyFlatpak(
 		return;
 	}
 
+	if (!invocation) {
+		return;
+	}
 	if (
 		basename(executable) !== "flatpak" ||
-		!isStructurallyCompleteCommand(normalized)
+		!isStructurallyCompleteCommand({
+			...normalized,
+			executableTokens: [invocation.executableToken],
+			launchOptionTokens: invocation.launchOptionTokens,
+			commandTokens: [
+				invocation.executableToken,
+				...invocation.launchOptionTokens,
+			],
+		})
 	) {
 		return ambiguous("flatpak");
 	}

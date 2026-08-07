@@ -218,6 +218,33 @@ describe("association selection controller", () => {
 		expect(controller.getState().canConfirm).toBe(true);
 	});
 
+	test("does not present untracked presence candidates as addition targets", async () => {
+		const controller = createAssociationSelectionController({
+			snapshot: {
+				...snapshot,
+				existingMembers: [{ gameId: "anchor", gameName: "Anchor" }],
+			},
+			presence: {
+				inventories: {
+					native_steam: { status: "complete" },
+					non_steam: { status: "complete" },
+				},
+				candidates: [
+					candidate("anchor", "reachable"),
+					candidate("tracked", "reachable"),
+					candidate("untracked", "reachable", { tracked: false }),
+				],
+			},
+		});
+
+		expect(controller.getState().additionCandidates).toEqual([
+			expect.objectContaining({ id: "tracked" }),
+		]);
+		expect(controller.getState().additionCandidates).not.toContainEqual(
+			expect.objectContaining({ id: "untracked" }),
+		);
+	});
+
 	test("does not apply a selection response after disposal", async () => {
 		const pending = deferred<ReturnType<typeof component>>();
 		const controller = selectionController();

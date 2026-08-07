@@ -110,7 +110,7 @@ export function createAssociationSelectionController({
 			snapshot.existingMembers.map((member) => member.gameId),
 		);
 		return (presence?.candidates ?? []).filter(
-			(candidate) => !componentMemberIds.has(candidate.id),
+			(candidate) => candidate.tracked && !componentMemberIds.has(candidate.id),
 		);
 	}
 

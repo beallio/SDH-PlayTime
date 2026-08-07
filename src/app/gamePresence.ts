@@ -839,9 +839,9 @@ function runtimeNonSteamInventory(): GamePresenceInventory {
 		deckDesktopApps?.apps instanceof Map
 			? Array.from(deckDesktopApps.apps.values())
 			: [];
-	if (deckDesktopRows.length > 0) {
+	if (typeof appStore === "undefined" || !Array.isArray(appStore.allApps)) {
 		return {
-			status: "complete",
+			status: deckDesktopRows.length > 0 ? "complete" : "missing",
 			apps: deckDesktopRows
 				.map((app) => {
 					const id = normalizeAppIdForInventory(app.appid);
@@ -852,17 +852,27 @@ function runtimeNonSteamInventory(): GamePresenceInventory {
 				),
 		};
 	}
-	if (typeof appStore === "undefined" || !Array.isArray(appStore.allApps)) {
-		return { status: "missing", apps: [] };
+
+	const appsById = new Map<string, { id: string; name: string }>();
+	for (const app of deckDesktopRows) {
+		const id = normalizeAppIdForInventory(app.appid);
+		if (id && !appsById.has(id)) {
+			appsById.set(id, { id, name: app.display_name });
+		}
 	}
+	for (const app of appStore.allApps) {
+		if (app.app_type !== APP_TYPE.THIRD_PARTY) {
+			continue;
+		}
+		const id = normalizeAppIdForInventory(app.appid);
+		if (id && !appsById.has(id)) {
+			appsById.set(id, { id, name: app.display_name });
+		}
+	}
+
 	return {
 		status: "complete",
-		apps: appStore.allApps
-			.filter((app) => app.app_type === APP_TYPE.THIRD_PARTY)
-			.flatMap((app) => {
-				const id = normalizeAppIdForInventory(app.appid);
-				return id ? [{ id, name: app.display_name }] : [];
-			}),
+		apps: [...appsById.values()],
 	};
 }
 

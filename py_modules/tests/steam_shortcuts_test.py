@@ -274,9 +274,43 @@ class SteamShortcutCatalogTest(unittest.TestCase):
 
         self.assertIsNotNone(valid.request)
         self.assertIsNone(valid.reason_code)
-        for outcome in (missing, non_integer, mismatched):
-            self.assertIsNone(outcome.request)
-            self.assertEqual(outcome.reason_code, "malformed")
+        self.assertIsNone(missing.request)
+        self.assertEqual(missing.reason_code, "malformed")
+        self.assertIsNone(non_integer.request)
+        self.assertEqual(non_integer.reason_code, "malformed")
+        self.assertIsNone(mismatched.request)
+        self.assertEqual(mismatched.reason_code, "missing")
+
+    def test_recognizes_records_with_app_ids_that_do_not_match_computed_shortcut_identity(
+        self,
+    ) -> None:
+        executable = "\"flatpak\""
+        app_name = "Ludusavi"
+        launch_options = "run com.github.mtkennerly.ludusavi"
+        app_id = -427321189
+        app_id_query = app_id & 0xFFFFFFFF
+        outcome = self._outcome_from_bytes(
+            shortcuts_bytes(
+                [
+                    {
+                        "appname": app_name,
+                        "exe": executable,
+                        "launchoptions": launch_options,
+                        "appid": app_id,
+                    }
+                ]
+            ),
+            app_id_query,
+        )
+
+        self.assertIsNotNone(outcome.request)
+        assert outcome.request is not None
+        self.assertIsNone(outcome.reason_code)
+        self.assertEqual(outcome.request.launcher_kind, "flatpak")
+        self.assertEqual(
+            outcome.request.normalized.launch_option_tokens,
+            ("run", "com.github.mtkennerly.ludusavi"),
+        )
 
     def test_rejects_malformed_shortcuts_before_accepting_a_record(self) -> None:
         valid = shortcuts_bytes([direct_entry()])

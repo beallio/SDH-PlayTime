@@ -68,6 +68,17 @@ function flatpakDetailsFromLaunchHints(appId: number) {
 	};
 }
 
+function flatpakDetailsFromWrapper(appId: number) {
+	return {
+		status: "success" as const,
+		details: {
+			strShortcutExe: "/usr/bin/env",
+			strShortcutLaunchOptions: `flatpak run --user --command=ludusavi com.example.flatpak.${appId}`,
+			strFlatpakAppID: `com.example.flatpak.${appId}`,
+		} as AppDetails,
+	};
+}
+
 function reachableResult() {
 	return {
 		launcherKind: "direct" as const,
@@ -345,6 +356,50 @@ describe("buildGamePresenceSnapshot", () => {
 				apps: [{ id: nonSteamId, name: "Flatpak Shortcut" }],
 			},
 			getAppDetails: async () => flatpakDetails(1234),
+			resolvePayloads: async () => ({
+				results: [
+					{
+						launcherKind: "flatpak",
+						classificationStatus: "recognized",
+						metadataStatus: "not_requested",
+						payloadStatus: "reachable",
+						payloadKind: "directory",
+						provenance: "untrusted_hint",
+						reasonCode: null,
+						payloadPath: "/var/lib/flatpak/app/com.example.flatpak.1234",
+					},
+				],
+				error: null,
+			}),
+		});
+
+		expect(snapshot.candidates).toHaveLength(1);
+		expect(snapshot.candidates[0]).toMatchObject({
+			id: nonSteamId,
+			source: "non_steam",
+			inventory: { status: "current", reasons: [] },
+			launcherKind: "flatpak",
+			availability: {
+				status: "reachable",
+				label: "Available on this Deck",
+			},
+		});
+	});
+
+	test("supports wrapped Flatpak resolver outcomes for completed non-Steam inventory", async () => {
+		const nonSteamId = String(0x80000001);
+		const snapshot = await build({
+			candidates: [
+				{
+					game: { id: nonSteamId, name: "Wrapped Flatpak Shortcut" },
+					duration: 1,
+				},
+			],
+			nonSteamInventory: {
+				status: "complete",
+				apps: [{ id: nonSteamId, name: "Wrapped Flatpak Shortcut" }],
+			},
+			getAppDetails: async () => flatpakDetailsFromWrapper(1234),
 			resolvePayloads: async () => ({
 				results: [
 					{
@@ -1130,6 +1185,80 @@ describe("buildGamePresenceSnapshot", () => {
 			status: "reachable",
 			reasons: [],
 			label: "Available on this Deck",
+		});
+	});
+
+	test("merges Deck desktop non-Steam inventory with third-party appStore rows", async () => {
+		const deckDesktopId = String(0x80000001);
+		const appStoreId = String(0x80000002);
+		backendCallHandler = async (method: unknown) => {
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [
+					{
+						game: { id: deckDesktopId, name: "Deck Desktop Shortcut" },
+						duration: 1,
+					},
+					{
+						game: { id: appStoreId, name: "Third-Party Shortcut" },
+						duration: 1,
+					},
+				];
+			}
+			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+				return { results: [reachableResult()], error: null };
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
+
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: 10,
+						display_name: "Native Runtime Game",
+						app_type: 0,
+					},
+					{
+						appid: Number(appStoreId),
+						display_name: "Third-Party Shortcut",
+						app_type: APP_TYPE.THIRD_PARTY,
+					},
+				],
+			},
+			collectionStore: {
+				deckDesktopApps: {
+					apps: new Map([
+						[
+							Number(deckDesktopId),
+							{
+								appid: Number(deckDesktopId),
+								display_name: "Deck Desktop Shortcut",
+							},
+						],
+					]),
+				},
+			},
+			SteamClient: {
+				Apps: {
+					BIsAppInstalled: () => true,
+				},
+			},
+		});
+
+		const snapshot = await refreshCurrentGamePresenceSnapshot({
+			getAppDetails: async (appId) => directDetails(appId),
+		});
+
+		const candidatesById = Object.fromEntries(
+			snapshot.candidates.map((candidate) => [candidate.id, candidate]),
+		);
+		expect(candidatesById[deckDesktopId]).toMatchObject({
+			source: "non_steam",
+			inventory: { status: "current", reasons: [] },
+		});
+		expect(candidatesById[appStoreId]).toMatchObject({
+			source: "non_steam",
+			inventory: { status: "current", reasons: [] },
 		});
 	});
 
