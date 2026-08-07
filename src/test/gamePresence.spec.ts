@@ -96,14 +96,33 @@ function build(overrides: Partial<GamePresenceBuildInput> = {}) {
 	});
 }
 
+type TestAppStoreEntry = {
+	appid: number;
+	display_name: string;
+	app_type: number;
+	installed?: boolean;
+	per_client_data?: Array<{ is_available_on_current_platform: boolean }>;
+};
+type TestDeckDesktopApp = { appid: number; display_name: string };
+type RuntimeTestFixtures = {
+	appStore?: { allApps: TestAppStoreEntry[] };
+	collectionStore?: {
+		deckDesktopApps?: {
+			apps: Map<number, TestDeckDesktopApp>;
+		};
+	};
+	SteamClient?: { Apps?: { BIsAppInstalled: (appId: number) => boolean } };
+};
+
+function setRuntimeFixtures(fixture: Partial<RuntimeTestFixtures>) {
+	Object.assign(globalThis as unknown as RuntimeTestFixtures, fixture);
+}
+
 describe("buildGamePresenceSnapshot", () => {
 	afterEach(() => {
-		// @ts-expect-error cleanup mocked runtime globals
-		delete globalThis.appStore;
-		// @ts-expect-error cleanup mocked runtime globals
-		delete globalThis.collectionStore;
-		// @ts-expect-error cleanup mocked runtime globals
-		delete globalThis.SteamClient;
+		for (const key of ["appStore", "collectionStore", "SteamClient"] as const) {
+			delete (globalThis as unknown as Record<string, unknown>)[key];
+		}
 	});
 
 	beforeEach(() => {
@@ -713,30 +732,22 @@ describe("buildGamePresenceSnapshot", () => {
 			throw new Error(`unexpected write or read RPC: ${String(method)}`);
 		};
 
-		(
-			globalThis as unknown as {
-				appStore: {
-					allApps: { appid: number; display_name: string; app_type: number }[];
-				};
-			}
-		).appStore = {
-			allApps: [
-				{
-					appid: 10,
-					display_name: "Uninstalled Runtime Game",
-					app_type: 0,
-				},
-			],
-		};
-		(
-			globalThis as unknown as {
-				SteamClient: { Apps?: { BIsAppInstalled: (appId: number) => boolean } };
-			}
-		).SteamClient = {
-			Apps: {
-				BIsAppInstalled: () => false,
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: 10,
+						display_name: "Uninstalled Runtime Game",
+						app_type: 0,
+					},
+				],
 			},
-		};
+			SteamClient: {
+				Apps: {
+					BIsAppInstalled: () => false,
+				},
+			},
+		});
 
 		const snapshot = await refreshCurrentGamePresenceSnapshot({
 			getAppDetails: async () => {
@@ -780,51 +791,35 @@ describe("buildGamePresenceSnapshot", () => {
 			throw new Error(`unexpected write or read RPC: ${String(method)}`);
 		};
 
-		(
-			globalThis as unknown as {
-				appStore: {
-					allApps: { appid: number; display_name: string; app_type: number }[];
-				};
-			}
-		).appStore = {
-			allApps: [
-				{
-					appid: 10,
-					display_name: "Native Runtime Game",
-					app_type: 0,
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: 10,
+						display_name: "Native Runtime Game",
+						app_type: 0,
+					},
+				],
+			},
+			collectionStore: {
+				deckDesktopApps: {
+					apps: new Map([
+						[
+							0x80000001,
+							{
+								appid: 0x80000001,
+								display_name: "Shortcut Runtime Game",
+							},
+						],
+					]),
 				},
-			],
-		};
-		(
-			globalThis as unknown as {
-				collectionStore: {
-					deckDesktopApps?: {
-						apps: Map<number, { appid: number; display_name: string }>;
-					};
-				};
-			}
-		).collectionStore = {
-			deckDesktopApps: {
-				apps: new Map([
-					[
-						0x80000001,
-						{
-							appid: 0x80000001,
-							display_name: "Shortcut Runtime Game",
-						},
-					],
-				]),
 			},
-		};
-		(
-			globalThis as unknown as {
-				SteamClient: { Apps?: { BIsAppInstalled: (appId: number) => boolean } };
-			}
-		).SteamClient = {
-			Apps: {
-				BIsAppInstalled: (appId: number) => appId === 10,
+			SteamClient: {
+				Apps: {
+					BIsAppInstalled: (appId: number) => appId === 10,
+				},
 			},
-		};
+		});
 
 		const snapshot = await refreshCurrentGamePresenceSnapshot({
 			getAppDetails: async (appId) => directDetails(appId),
@@ -879,52 +874,32 @@ describe("buildGamePresenceSnapshot", () => {
 			throw new Error(`unexpected write or read RPC: ${String(method)}`);
 		};
 
-		(
-			globalThis as unknown as {
-				appStore: {
-					allApps: {
-						appid: number;
-						display_name: string;
-						app_type: number;
-					}[];
-				};
-			}
-		).appStore = {
-			allApps: [
-				{
-					appid: 10,
-					display_name: "Native Runtime Game",
-					app_type: 0,
-				},
-				{
-					appid: 0x80000001,
-					display_name: "Shortcut Runtime Game",
-					app_type: APP_TYPE.THIRD_PARTY,
-				},
-			],
-		};
-		(
-			globalThis as unknown as {
-				collectionStore: {
-					deckDesktopApps: {
-						apps: Map<number, { appid: number; display_name: string }>;
-					};
-				};
-			}
-		).collectionStore = {
-			deckDesktopApps: {
-				apps: new Map(),
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: 10,
+						display_name: "Native Runtime Game",
+						app_type: 0,
+					},
+					{
+						appid: 0x80000001,
+						display_name: "Shortcut Runtime Game",
+						app_type: APP_TYPE.THIRD_PARTY,
+					},
+				],
 			},
-		};
-		(
-			globalThis as unknown as {
-				SteamClient: { Apps?: { BIsAppInstalled: (appId: number) => boolean } };
-			}
-		).SteamClient = {
-			Apps: {
-				BIsAppInstalled: (appId: number) => appId === 10,
+			collectionStore: {
+				deckDesktopApps: {
+					apps: new Map(),
+				},
 			},
-		};
+			SteamClient: {
+				Apps: {
+					BIsAppInstalled: (appId: number) => appId === 10,
+				},
+			},
+		});
 
 		const snapshot = await refreshCurrentGamePresenceSnapshot({
 			getAppDetails: async (appId) => directDetails(appId),
@@ -1001,39 +976,22 @@ describe("buildGamePresenceSnapshot", () => {
 			throw new Error(`unexpected write or read RPC: ${String(method)}`);
 		};
 
-		(
-			globalThis as unknown as {
-				appStore: {
-					allApps: {
-						appid: number;
-						display_name: string;
-						app_type: number;
-					}[];
-				};
-			}
-		).appStore = {
-			allApps: [
-				{
-					appid: 0x80000001,
-					display_name: "Flatpak Runtime Game",
-					app_type: APP_TYPE.THIRD_PARTY,
-				},
-			],
-		};
-
-		(
-			globalThis as unknown as {
-				collectionStore: {
-					deckDesktopApps: {
-						apps: Map<number, { appid: number; display_name: string }>;
-					};
-				};
-			}
-		).collectionStore = {
-			deckDesktopApps: {
-				apps: new Map(),
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: 0x80000001,
+						display_name: "Flatpak Runtime Game",
+						app_type: APP_TYPE.THIRD_PARTY,
+					},
+				],
 			},
-		};
+			collectionStore: {
+				deckDesktopApps: {
+					apps: new Map(),
+				},
+			},
+		});
 
 		const snapshot = await refreshCurrentGamePresenceSnapshot({
 			getAppDetails: async () => flatpakDetails(1234),
@@ -1065,27 +1023,18 @@ describe("buildGamePresenceSnapshot", () => {
 			throw new Error(`unexpected write or read RPC: ${String(method)}`);
 		};
 
-		(
-			globalThis as unknown as {
-				appStore: {
-					allApps: {
-						appid: number;
-						display_name: string;
-						app_type: number;
-						installed?: boolean;
-					}[];
-				};
-			}
-		).appStore = {
-			allApps: [
-				{
-					appid: 10,
-					display_name: "Native Runtime Game",
-					app_type: 0,
-					installed: true,
-				},
-			],
-		};
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: 10,
+						display_name: "Native Runtime Game",
+						app_type: 0,
+						installed: true,
+					},
+				],
+			},
+		});
 
 		const snapshot = await refreshCurrentGamePresenceSnapshot({
 			getAppDetails: async () => {
@@ -1122,29 +1071,18 @@ describe("buildGamePresenceSnapshot", () => {
 			throw new Error(`unexpected write or read RPC: ${String(method)}`);
 		};
 
-		(
-			globalThis as unknown as {
-				appStore: {
-					allApps: {
-						appid: number;
-						display_name: string;
-						app_type: number;
-						per_client_data?: Array<{
-							is_available_on_current_platform: boolean;
-						}>;
-					}[];
-				};
-			}
-		).appStore = {
-			allApps: [
-				{
-					appid: 10,
-					display_name: "Native Runtime Game",
-					app_type: 0,
-					per_client_data: [{ is_available_on_current_platform: true }],
-				},
-			],
-		};
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: 10,
+						display_name: "Native Runtime Game",
+						app_type: 0,
+						per_client_data: [{ is_available_on_current_platform: true }],
+					},
+				],
+			},
+		});
 
 		const reachableSnapshot = await refreshCurrentGamePresenceSnapshot({
 			getAppDetails: async () => {
@@ -1162,29 +1100,18 @@ describe("buildGamePresenceSnapshot", () => {
 			label: "Installed",
 		});
 
-		(
-			globalThis as unknown as {
-				appStore: {
-					allApps: {
-						appid: number;
-						display_name: string;
-						app_type: number;
-						per_client_data?: Array<{
-							is_available_on_current_platform: boolean;
-						}>;
-					}[];
-				};
-			}
-		).appStore = {
-			allApps: [
-				{
-					appid: 10,
-					display_name: "Native Runtime Game",
-					app_type: 0,
-					per_client_data: [{ is_available_on_current_platform: false }],
-				},
-			],
-		};
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: 10,
+						display_name: "Native Runtime Game",
+						app_type: 0,
+						per_client_data: [{ is_available_on_current_platform: false }],
+					},
+				],
+			},
+		});
 
 		const unreachableSnapshot = await refreshCurrentGamePresenceSnapshot({
 			getAppDetails: async () => {
