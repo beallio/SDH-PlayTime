@@ -137,6 +137,7 @@ type CandidateSeed = {
 	name: string;
 	tracked: boolean;
 	source?: GamePresenceSource;
+	sourceInferred: boolean;
 	recentPlaytime: number;
 	totalPlaytime: number;
 };
@@ -182,7 +183,29 @@ function toFiniteNumber(value: number | undefined) {
 
 function toAppId(id: string) {
 	const appId = Number(id);
-	return Number.isSafeInteger(appId) && appId >= 0 ? appId : undefined;
+	if (!Number.isSafeInteger(appId)) {
+		return;
+	}
+	const normalizedAppId = appId < 0 ? appId >>> 0 : appId;
+	return Number.isSafeInteger(normalizedAppId) ? normalizedAppId : undefined;
+}
+
+function toSteamCallbackAppId(appId: number) {
+	return appId > 0x7fffffff ? appId - 0x100000000 : appId;
+}
+
+function normalizeAppIdForInventory(appId: number) {
+	if (!Number.isSafeInteger(appId)) {
+		return;
+	}
+	return String(appId < 0 ? appId >>> 0 : appId);
+}
+
+function normalizeIdString(id: string) {
+	const appId = Number(id);
+	return Number.isSafeInteger(appId)
+		? String(appId < 0 ? appId >>> 0 : appId)
+		: id;
 }
 
 /**
@@ -194,14 +217,17 @@ function toAppId(id: string) {
 function sourceFromStoredSteamAppId(
 	id: string,
 ): GamePresenceSource | undefined {
-	if (!/^(?:0|[1-9]\d*)$/.test(id)) {
-		return;
-	}
 	const appId = Number(id);
-	if (!Number.isSafeInteger(appId) || appId > 0xffffffff) {
+	if (!Number.isSafeInteger(appId)) {
 		return;
 	}
-	return appId >= STEAM_SHORTCUT_HIGH_BIT ? "non_steam" : "native_steam";
+	const normalizedAppId = appId < 0 ? appId >>> 0 : appId;
+	if (normalizedAppId > 0xffffffff) {
+		return;
+	}
+	return normalizedAppId >= STEAM_SHORTCUT_HIGH_BIT
+		? "non_steam"
+		: "native_steam";
 }
 
 function reason(
@@ -214,11 +240,13 @@ function reason(
 function buildSeeds(input: GamePresenceBuildInput) {
 	const seeds = new Map<string, CandidateSeed>();
 	for (const candidate of input.candidates) {
-		seeds.set(candidate.game.id, {
-			id: candidate.game.id,
+		const candidateId = normalizeIdString(candidate.game.id);
+		seeds.set(candidateId, {
+			id: candidateId,
 			name: candidate.game.name,
 			tracked: true,
-			source: candidate.source ?? sourceFromStoredSteamAppId(candidate.game.id),
+			source: candidate.source ?? sourceFromStoredSteamAppId(candidateId),
+			sourceInferred: candidate.source === undefined,
 			recentPlaytime: toFiniteNumber(candidate.recentPlaytime),
 			totalPlaytime: toFiniteNumber(
 				candidate.totalPlaytime ?? candidate.duration,
@@ -248,6 +276,7 @@ function buildSeeds(input: GamePresenceBuildInput) {
 				name: app.name,
 				tracked: false,
 				source,
+				sourceInferred: false,
 				recentPlaytime: 0,
 				totalPlaytime: 0,
 			});
@@ -304,14 +333,16 @@ function deriveInventory(
 
 	const presentSource = presentSources[0];
 	if (presentSource) {
-		if (seed.source && seed.source !== presentSource) {
-			return {
-				source: "unknown",
-				inventory: {
-					status: "unknown",
-					reasons: [reason("inventory_source_conflict", "resolver")],
-				},
-			};
+		if (seed.source) {
+			if (seed.source !== presentSource && !seed.sourceInferred) {
+				return {
+					source: "unknown",
+					inventory: {
+						status: "unknown",
+						reasons: [reason("inventory_source_conflict", "resolver")],
+					},
+				};
+			}
 		}
 		if (inventoryFor(input, presentSource).status !== "complete") {
 			return {
@@ -605,7 +636,7 @@ export async function buildGamePresenceSnapshot(
 			}
 			let details: AppDetailsResult;
 			try {
-				details = await getCachedDetails(appId);
+				details = await getCachedDetails(toSteamCallbackAppId(appId));
 			} catch {
 				candidate.availability = {
 					status: "unknown",
@@ -792,7 +823,10 @@ function runtimeNativeInventory(): GamePresenceInventory {
 		status: "complete",
 		apps: appStore.allApps
 			.filter((app) => app.app_type !== APP_TYPE.THIRD_PARTY)
-			.map((app) => ({ id: String(app.appid), name: app.display_name })),
+			.flatMap((app) => {
+				const id = normalizeAppIdForInventory(app.appid);
+				return id ? [{ id, name: app.display_name }] : [];
+			}),
 	};
 }
 
@@ -808,13 +842,16 @@ function runtimeNonSteamInventory(): GamePresenceInventory {
 	if (deckDesktopRows.length > 0) {
 		return {
 			status: "complete",
-			apps: deckDesktopRows.map((app) => ({
-				id: String(app.appid),
-				name: app.display_name,
-			})),
+			apps: deckDesktopRows
+				.map((app) => {
+					const id = normalizeAppIdForInventory(app.appid);
+					return id ? { id, name: app.display_name } : undefined;
+				})
+				.filter(
+					(app): app is { id: string; name: string } => app !== undefined,
+				),
 		};
 	}
-
 	if (typeof appStore === "undefined" || !Array.isArray(appStore.allApps)) {
 		return { status: "missing", apps: [] };
 	}
@@ -822,7 +859,10 @@ function runtimeNonSteamInventory(): GamePresenceInventory {
 		status: "complete",
 		apps: appStore.allApps
 			.filter((app) => app.app_type === APP_TYPE.THIRD_PARTY)
-			.map((app) => ({ id: String(app.appid), name: app.display_name })),
+			.flatMap((app) => {
+				const id = normalizeAppIdForInventory(app.appid);
+				return id ? [{ id, name: app.display_name }] : [];
+			}),
 	};
 }
 
@@ -851,7 +891,8 @@ function runtimeNativeInstallProbe(): NativeInstallProbe | undefined {
 
 		return (appId: number) => {
 			const app = runtime.appStore?.allApps?.find(
-				(game) => game.appid === appId,
+				(game) =>
+					game.appid === appId || game.appid === toSteamCallbackAppId(appId),
 			);
 			if (!app) {
 				return { status: "unknown" };

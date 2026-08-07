@@ -910,6 +910,165 @@ describe("buildGamePresenceSnapshot", () => {
 		expect(candidatesById[nonSteamId]?.launcherKind).toBe("direct");
 	});
 
+	test("matches non-Steam inventory entries when runtime IDs are signed 32-bit integers", async () => {
+		const nonSteamId = String(0x80000001);
+		const signedNonSteamId = Number(nonSteamId) - 0x100000000;
+		backendCallHandler = async (method: unknown) => {
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [
+					{
+						game: { id: nonSteamId, name: "Shortcut Runtime Game" },
+						duration: 1,
+					},
+				];
+			}
+			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+				return { results: [reachableResult()], error: null };
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
+
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: signedNonSteamId,
+						display_name: "Shortcut Runtime Game",
+						app_type: APP_TYPE.THIRD_PARTY,
+					},
+				],
+			},
+			collectionStore: {
+				deckDesktopApps: {
+					apps: new Map([
+						[
+							signedNonSteamId,
+							{
+								appid: signedNonSteamId,
+								display_name: "Shortcut Runtime Game",
+							},
+						],
+					]),
+				},
+			},
+		});
+
+		const snapshot = await refreshCurrentGamePresenceSnapshot({
+			getAppDetails: async (appId) => directDetails(appId),
+		});
+
+		expect(snapshot.candidates).toHaveLength(1);
+		expect(snapshot.candidates[0]).toMatchObject({
+			id: nonSteamId,
+			source: "non_steam",
+			inventory: {
+				status: "current",
+				reasons: [],
+			},
+			availability: {
+				status: "reachable",
+				reasons: [],
+				label: "Available on this Deck",
+			},
+		});
+	});
+
+	test("queries Steam callbacks using signed shortcut IDs", async () => {
+		const nonSteamId = String(0x80000001);
+		const expectedCallbackAppId = Number(nonSteamId) - 0x100000000;
+		let callbackAppId: number | undefined;
+		backendCallHandler = async (method: unknown) => {
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [{ game: { id: nonSteamId, name: "Shortcut Runtime Game" } }];
+			}
+			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+				return { results: [reachableResult()], error: null };
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: expectedCallbackAppId,
+						display_name: "Shortcut Runtime Game",
+						app_type: APP_TYPE.THIRD_PARTY,
+					},
+				],
+			},
+		});
+
+		const snapshot = await refreshCurrentGamePresenceSnapshot({
+			getAppDetails: async (appId) => {
+				callbackAppId = appId;
+				return directDetails(appId);
+			},
+		});
+
+		expect(snapshot.candidates).toHaveLength(1);
+		expect(callbackAppId).toBe(expectedCallbackAppId);
+		expect(snapshot.candidates[0]).toMatchObject({
+			id: nonSteamId,
+			source: "non_steam",
+			availability: {
+				status: "reachable",
+				reasons: [],
+				label: "Available on this Deck",
+			},
+		});
+	});
+
+	test("treats inferred high-bit tracked IDs as native when the runtime proves native membership", async () => {
+		const highBitNativeId = "3245664592";
+		backendCallHandler = async (method: unknown) => {
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [
+					{
+						game: { id: highBitNativeId, name: "Native Runtime Game" },
+						duration: 12,
+					},
+				];
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
+
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: Number(highBitNativeId),
+						display_name: "Native Runtime Game",
+						app_type: 0,
+					},
+				],
+			},
+			SteamClient: {
+				Apps: {
+					BIsAppInstalled: (appId: number) => appId === Number(highBitNativeId),
+				},
+			},
+		});
+
+		const snapshot = await refreshCurrentGamePresenceSnapshot({
+			getAppDetails: async () => detailsResult(),
+		});
+
+		expect(snapshot.candidates).toHaveLength(1);
+		expect(snapshot.candidates[0]).toMatchObject({
+			id: highBitNativeId,
+			source: "native_steam",
+			inventory: {
+				status: "current",
+				reasons: [],
+			},
+			availability: {
+				status: "reachable",
+				reasons: [],
+				label: "Installed",
+			},
+		});
+	});
+
 	test("falls back to appStore for non-Steam runtime inventory when Deck desktop apps collection is empty", async () => {
 		const nonSteamId = String(0x80000001);
 		backendCallHandler = async (method: unknown) => {
