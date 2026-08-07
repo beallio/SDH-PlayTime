@@ -212,6 +212,43 @@
 			}
 		},
 		{
+			"id": "flatpak-run-command-with-options-before-app-id",
+			"source": {
+				"repository": "0u73r-h34v3n/SDH-PlayTime",
+				"commit": "285d17dda640a5e68c801c0c67c8a85a45f71e1e",
+				"path": "src/steam/utils/GamePaths.ts"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/flatpak",
+				"strShortcutLaunchOptions": "run --user --command=ludusavi org.example.flatpak.ludusavi"
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "flatpak",
+				"externalIdentityHints": {}
+			}
+		},
+		{
+			"id": "heroic-flatpak-run-command-with-options-before-app-id",
+			"source": {
+				"repository": "Heroic-Games-Launcher/HeroicGamesLauncher",
+				"commit": "d6366b34084be43369f24ff04a50dab39ce5a454",
+				"path": "src/backend/protocol.ts"
+			},
+			"input": {
+				"strShortcutExe": "/usr/bin/flatpak",
+				"strShortcutLaunchOptions": "run --user --command=heroic com.heroicgameslauncher.hgl heroic://launch/legendary/ludusavi"
+			},
+			"expected": {
+				"status": "recognized",
+				"launcherKind": "heroic",
+				"externalIdentityHints": {
+					"heroicAppName": "ludusavi",
+					"heroicRunner": "legendary"
+				}
+			}
+		},
+		{
 			"id": "generic-flatpak-app-is-not-a-direct-payload",
 			"source": {
 				"repository": "0u73r-h34v3n/SDH-PlayTime",

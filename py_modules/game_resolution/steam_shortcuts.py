@@ -205,16 +205,18 @@ def _is_heroic_shortcut(
 ) -> bool:
     executable = normalized.executable_tokens
     options = normalized.launch_option_tokens
+    flatpak_app_id = (
+        _parse_flatpak_app_id(options)
+        if executable
+        and Path(executable[0]).name.casefold() == "flatpak"
+        else None
+    )
     if len(executable) != 1:
         return False
     is_native = _heroic_stem(executable[0])
     is_flatpak = (
-        Path(executable[0]).name.casefold() == "flatpak"
-        and normalized.flatpak_app_id is not None
-        and normalized.flatpak_app_id.casefold() == _HEROIC_FLATPAK_APP_ID
-        and len(options) >= 3
-        and options[0] == "run"
-        and options[1].casefold() == _HEROIC_FLATPAK_APP_ID
+        flatpak_app_id is not None
+        and flatpak_app_id.casefold() == _HEROIC_FLATPAK_APP_ID
     )
     return (is_native or is_flatpak) and any(
         option.casefold().startswith("heroic://launch") for option in options
@@ -233,10 +235,13 @@ def _parse_flatpak_app_id(tokens: tuple[str, ...]) -> str | None:
     for index, token in enumerate(tokens):
         if token != "run":
             continue
-        app_id = tokens[index + 1] if index + 1 < len(tokens) else None
-        if app_id is None or not _flatpak_application_id(app_id):
-            return None
-        return app_id
+        for candidate in tokens[index + 1 :]:
+            if candidate == "--":
+                break
+            if candidate.startswith("-"):
+                continue
+            if candidate and "." in candidate and _flatpak_application_id(candidate):
+                return candidate
     return None
 
 

@@ -510,49 +510,6 @@ const AboutSection = () => {
 					</DialogButton>
 				</PanelSectionRow>
 			</PanelSection>
-
-			<PanelSection title="Supporters ❤️">
-				<div
-					style={{
-						padding: "8px 0",
-						color: "#dcdedf",
-						fontSize: "13px",
-						lineHeight: "1.8",
-						textAlign: "center",
-					}}
-				>
-					<p
-						style={{
-							margin: "0 0 8px 0",
-							color: "#8b929a",
-							fontSize: "12px",
-						}}
-					>
-						Thank you to everyone who supported PlayTime!
-					</p>
-					{[
-						"basti",
-						"mindxpert",
-						"he",
-						"techenthsiast99",
-						"Vigz",
-						"Ray",
-						"MightyWolf_",
-						"Somebody",
-						"Blake Polzer",
-						"Reusable-Box",
-						"retroshelf.org",
-						"burritobob",
-					].map((name, i, arr) => (
-						<span key={name}>
-							<span style={{ color: "#ff9966", fontWeight: 500 }}>{name}</span>
-							{i < arr.length - 1 && (
-								<span style={{ color: "#8b929a" }}> · </span>
-							)}
-						</span>
-					))}
-				</div>
-			</PanelSection>
 		</div>
 	);
 };
