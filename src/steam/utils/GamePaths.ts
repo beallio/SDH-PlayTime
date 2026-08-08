@@ -640,6 +640,31 @@ function parseUrl(token: string): URL | undefined {
 	}
 }
 
+export type LaunchUriParts = {
+	protocol: string;
+	host: string;
+	pathname: string;
+};
+
+/**
+ * Returns the path segments after a `heroic://launch` action, or `undefined` when the URI
+ * is not a Heroic launch URI. Engines disagree on how non-special schemes are parsed:
+ * Node and Bun report `heroic://launch` as host `launch` with an empty pathname, while
+ * Steam Deck CEF reports an empty host with pathname `//launch`. Both shapes must resolve
+ * to the same segments, matching the existing `url.host || segments.shift()` idiom in
+ * `classifyLutris`.
+ */
+export function heroicLaunchSegments(
+	url: LaunchUriParts,
+): string[] | undefined {
+	if (url.protocol !== "heroic:") {
+		return;
+	}
+	const segments = url.pathname.split("/").filter(Boolean);
+	const action = url.host || segments.shift();
+	return action === "launch" ? segments : undefined;
+}
+
 function getUrlValues(url: URL, names: string[]): string[] {
 	return names.flatMap((name) => url.searchParams.getAll(name));
 }
@@ -702,8 +727,12 @@ function classifyHeroic(
 	const executable = getExecutableToken(normalized);
 	const heroicUrls = normalized.launchOptionTokens
 		.map(parseUrl)
+		.map((url) => {
+			const segments = url ? heroicLaunchSegments(url) : undefined;
+			return url && segments ? { url, segments } : undefined;
+		})
 		.filter(
-			(url): url is URL => url?.protocol === "heroic:" && url.host === "launch",
+			(entry): entry is { url: URL; segments: string[] } => entry !== undefined,
 		);
 	const isHeroicLauncher =
 		hasFlatpakLauncher(normalized, FLATPAK_LAUNCHERS.heroic) ||
@@ -721,12 +750,11 @@ function classifyHeroic(
 	const alternateExecutables: string[] = [];
 	let invalidPath = false;
 
-	for (const url of heroicUrls) {
+	for (const { url, segments } of heroicUrls) {
 		appNames.push(...getUrlValues(url, ["appName", "appId", "appID"]));
 		runners.push(...getUrlValues(url, ["runner"]));
 		alternateExecutables.push(...getUrlValues(url, ["altExe"]));
 
-		const segments = url.pathname.split("/").filter(Boolean);
 		if (segments.length === 1) {
 			appNames.push(decodeUriComponent(segments[0]));
 		} else if (segments.length === 2) {
@@ -1054,7 +1082,7 @@ function launcherProtocols(
 	const protocols = new Set<"heroic" | "lutris">();
 	for (const token of normalized.commandTokens) {
 		const url = parseUrl(token);
-		if (url?.protocol === "heroic:" && url.host === "launch") {
+		if (url && heroicLaunchSegments(url) !== undefined) {
 			protocols.add("heroic");
 		}
 		if (url?.protocol === "lutris:") {
