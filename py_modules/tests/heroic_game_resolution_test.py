@@ -26,19 +26,26 @@ def heroic_entry(
     executable: str,
     launch_options: tuple[str, ...],
     flatpak_app_id: str | None = None,
+    executable_tokens: list[str] | None = None,
+    shortcut_start_dir: str | None = None,
+    start_dir_tokens: list[str] | None = None,
 ) -> dict[str, object]:
+    actual_executable_tokens = (
+        [executable] if executable_tokens is None else executable_tokens
+    )
+    actual_start_dir_tokens = [] if start_dir_tokens is None else start_dir_tokens
     return {
         "launcherKind": "heroic",
         "classificationStatus": "recognized",
         "normalized": {
             "shortcutExe": executable,
             "shortcutLaunchOptions": " ".join(launch_options),
-            "shortcutStartDir": None,
+            "shortcutStartDir": shortcut_start_dir,
             "flatpakAppId": flatpak_app_id,
-            "executableTokens": [executable],
+            "executableTokens": actual_executable_tokens,
             "launchOptionTokens": list(launch_options),
-            "startDirTokens": [],
-            "commandTokens": [executable, *launch_options],
+            "startDirTokens": actual_start_dir_tokens,
+            "commandTokens": [*actual_executable_tokens, *launch_options],
         },
         "metadataCandidates": [],
     }
@@ -707,6 +714,202 @@ class HeroicGameResolutionTest(unittest.TestCase):
         self.assertEqual(result.launcher_kind, "heroic")
         self.assertEqual(result.reason_code, "malformed")
         self.assertEqual(custom_root.reason_code, "malformed")
+
+    def test_resolves_flatpak_heroic_shortcut_with_bare_exe_and_extra_launch_flags(
+        self,
+    ) -> None:
+        self.write_json(
+            "sideload_apps/library.json",
+            {
+                "games": [
+                    {
+                        "app_name": "4YuV2WARPPBTcq2Aatubw1",
+                        "runner": "sideload",
+                        "install": {
+                            "executable": str(
+                                self.root / "Games/Transformers/Transformers.exe"
+                            )
+                        },
+                    }
+                ]
+            },
+        )
+        payload = self.write_payload("Games/Transformers/Transformers.exe")
+
+        result = (
+            self.coordinator()
+            .resolve_batch(
+                [
+                    heroic_entry(
+                        executable='"flatpak"',
+                        executable_tokens=["flatpak"],
+                        flatpak_app_id=None,
+                        shortcut_start_dir='"/usr/bin"',
+                        start_dir_tokens=["/usr/bin"],
+                        launch_options=(
+                            "run",
+                            "com.heroicgameslauncher.hgl",
+                            "--no-gui",
+                            "--no-sandbox",
+                            "heroic://launch?appName=4YuV2WARPPBTcq2Aatubw1&runner=sideload",
+                        ),
+                    )
+                ]
+            )
+            .results[0]
+        )
+
+        self.assertEqual(result.payload_status, "reachable")
+        self.assertEqual(result.payload_path, str(payload))
+
+    def test_gates_independently_accept_relaxed_variations(self) -> None:
+        self.write_json(
+            "sideload_apps/library.json",
+            {
+                "games": [
+                    {
+                        "app_name": "4YuV2WARPPBTcq2Aatubw1",
+                        "runner": "sideload",
+                        "install": {
+                            "executable": str(
+                                self.root / "Games/Transformers/Transformers.exe"
+                            )
+                        },
+                    }
+                ]
+            },
+        )
+        payload = self.write_payload("Games/Transformers/Transformers.exe")
+
+        # Case 1: 5 tokens with matching app id (option filtering)
+        res1 = (
+            self.coordinator()
+            .resolve_batch(
+                [
+                    heroic_entry(
+                        executable="/usr/bin/flatpak",
+                        flatpak_app_id="com.heroicgameslauncher.hgl",
+                        launch_options=(
+                            "run",
+                            "com.heroicgameslauncher.hgl",
+                            "--no-gui",
+                            "--no-sandbox",
+                            "heroic://launch?appName=4YuV2WARPPBTcq2Aatubw1&runner=sideload",
+                        ),
+                    )
+                ]
+            )
+            .results[0]
+        )
+
+        # Case 2: flatpak_app_id is None (derived flatpak identity)
+        res2 = (
+            self.coordinator()
+            .resolve_batch(
+                [
+                    heroic_entry(
+                        executable="/usr/bin/flatpak",
+                        flatpak_app_id=None,
+                        launch_options=(
+                            "run",
+                            "com.heroicgameslauncher.hgl",
+                            "heroic://launch?appName=4YuV2WARPPBTcq2Aatubw1&runner=sideload",
+                        ),
+                    )
+                ]
+            )
+            .results[0]
+        )
+
+        # Case 3: bare quoted "flatpak" exe (bare flatpak exe)
+        res3 = (
+            self.coordinator()
+            .resolve_batch(
+                [
+                    heroic_entry(
+                        executable='"flatpak"',
+                        executable_tokens=["flatpak"],
+                        flatpak_app_id="com.heroicgameslauncher.hgl",
+                        launch_options=(
+                            "run",
+                            "com.heroicgameslauncher.hgl",
+                            "heroic://launch?appName=4YuV2WARPPBTcq2Aatubw1&runner=sideload",
+                        ),
+                    )
+                ]
+            )
+            .results[0]
+        )
+
+        self.assertEqual(res1.payload_status, "reachable")
+        self.assertEqual(res1.payload_path, str(payload))
+        self.assertEqual(res2.payload_status, "reachable")
+        self.assertEqual(res2.payload_path, str(payload))
+        self.assertEqual(res3.payload_status, "reachable")
+        self.assertEqual(res3.payload_path, str(payload))
+
+    def test_regression_guards_fail_closed(self) -> None:
+        # Case 1: non-flatpak executable given as a bare name
+        bare_non_flatpak = (
+            self.coordinator()
+            .resolve_batch(
+                [
+                    heroic_entry(
+                        executable='"heroic"',
+                        executable_tokens=["heroic"],
+                        launch_options=(
+                            "heroic://launch?appName=normal-game&runner=legendary",
+                        ),
+                    )
+                ]
+            )
+            .results[0]
+        )
+
+        # Case 2: second surviving token is another flatpak app id
+        other_flatpak_app_id = (
+            self.coordinator()
+            .resolve_batch(
+                [
+                    heroic_entry(
+                        executable="/usr/bin/flatpak",
+                        launch_options=(
+                            "run",
+                            "com.other.app",
+                            "heroic://launch?appName=normal-game&runner=legendary",
+                        ),
+                    )
+                ]
+            )
+            .results[0]
+        )
+
+        # Case 3: flatpak-launcher shortcut carrying two heroic:// URIs after filtering
+        two_heroic_uris = (
+            self.coordinator()
+            .resolve_batch(
+                [
+                    heroic_entry(
+                        executable="/usr/bin/flatpak",
+                        flatpak_app_id="com.heroicgameslauncher.hgl",
+                        launch_options=(
+                            "run",
+                            "com.heroicgameslauncher.hgl",
+                            "heroic://launch?appName=normal-game&runner=legendary",
+                            "heroic://launch?appName=alternate-game&runner=legendary",
+                        ),
+                    )
+                ]
+            )
+            .results[0]
+        )
+
+        self.assertEqual(bare_non_flatpak.payload_status, "unknown")
+        self.assertEqual(bare_non_flatpak.reason_code, "malformed")
+        self.assertEqual(other_flatpak_app_id.payload_status, "unknown")
+        self.assertEqual(other_flatpak_app_id.reason_code, "malformed")
+        self.assertEqual(two_heroic_uris.payload_status, "unknown")
+        self.assertEqual(two_heroic_uris.reason_code, "malformed")
 
 
 if __name__ == "__main__":
