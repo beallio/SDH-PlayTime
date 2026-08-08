@@ -18,6 +18,7 @@ from py_modules.game_resolution import (
     MAX_RESOLUTION_BATCH_SIZE,
 )
 from py_modules.game_resolution.direct import host_subprocess_env
+from py_modules.game_resolution.filesystem import FilesystemProbeResult
 from py_modules.game_resolution.models import ResolutionRequest, ResolutionResult
 
 
@@ -39,6 +40,22 @@ def direct_entry(path: str, **overrides: object) -> dict[str, object]:
         "metadataCandidates": [],
     }
     entry.update(overrides)
+    return entry
+
+
+def direct_entry_with_launch_options(
+    path: str, launch_options: str, launch_tokens: tuple[str, ...]
+) -> dict[str, object]:
+    entry = direct_entry(path)
+    normalized = entry["normalized"]
+    assert isinstance(normalized, dict)
+    normalized.update(
+        {
+            "shortcutLaunchOptions": launch_options,
+            "launchOptionTokens": list(launch_tokens),
+            "commandTokens": [path, *launch_tokens],
+        }
+    )
     return entry
 
 
@@ -113,6 +130,160 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
             [item.provenance for item in result.results],
             ["direct_executable"] * 3,
         )
+
+    def test_resolves_fall_of_cybertron_env_prefixed_shortcut(self) -> None:
+        executable = (
+            "/run/media/deck/sdcard_1tb/heroic/prefixes/default/"
+            "Transformers Fall of Cybertron/drive_c/Program Files (x86)/"
+            "Transformers Fall of Cybertron/Binaries/TFOC.exe"
+        )
+        launch_options = (
+            'STEAM_COMPAT_DATA_PATH="/run/media/deck/sdcard_1tb/heroic/'
+            'prefixes/default/Transformers Fall of Cybertron" %command%'
+        )
+        entry = direct_entry(executable)
+        normalized = entry["normalized"]
+        assert isinstance(normalized, dict)
+        normalized.update(
+            {
+                "shortcutLaunchOptions": launch_options,
+                "launchOptionTokens": [
+                    "STEAM_COMPAT_DATA_PATH=/run/media/deck/sdcard_1tb/heroic/"
+                    "prefixes/default/Transformers Fall of Cybertron",
+                    "%command%",
+                ],
+                "commandTokens": [
+                    executable,
+                    "STEAM_COMPAT_DATA_PATH=/run/media/deck/sdcard_1tb/heroic/"
+                    "prefixes/default/Transformers Fall of Cybertron",
+                    "%command%",
+                ],
+            }
+        )
+
+        with unittest.mock.patch.object(
+            FilesystemProbe,
+            "probe_regular_file",
+            return_value=FilesystemProbeResult(
+                executable, None, stat.S_IFREG, b"MZ"
+            ),
+        ):
+            result = self.coordinator().resolve_batch([entry]).results[0]
+
+        self.assertIsNone(result.reason_code)
+        self.assertEqual(result.payload_status, "reachable")
+        self.assertEqual(result.payload_path, executable)
+
+    def test_marks_missing_env_prefixed_payload_unreachable(self) -> None:
+        payload = self.root / "Missing.exe"
+        result = self.coordinator().resolve_batch(
+            [
+                direct_entry_with_launch_options(
+                    str(payload),
+                    'STEAM_COMPAT_DATA_PATH="/p" %command%',
+                    ("STEAM_COMPAT_DATA_PATH=/p", "%command%"),
+                )
+            ]
+        ).results[0]
+
+        self.assertEqual(result.payload_status, "unreachable")
+        self.assertEqual(result.reason_code, "payload_missing")
+
+    def test_rejects_system_path_even_with_env_prefixed_launch_options(self) -> None:
+        result = self.coordinator().resolve_batch(
+            [
+                direct_entry_with_launch_options(
+                    "/usr/bin/foo",
+                    'STEAM_COMPAT_DATA_PATH="/p" %command%',
+                    ("STEAM_COMPAT_DATA_PATH=/p", "%command%"),
+                )
+            ]
+        ).results[0]
+
+        self.assertEqual(result.payload_status, "unknown")
+        self.assertEqual(result.reason_code, "unsupported")
+
+    def test_rejects_non_assignment_before_command(self) -> None:
+        result = self.coordinator().resolve_batch(
+            [
+                direct_entry_with_launch_options(
+                    str(self.root / "Flag.exe"),
+                    "--flag %command%",
+                    ("--flag", "%command%"),
+                )
+            ]
+        ).results[0]
+
+        self.assertEqual(result.payload_status, "unknown")
+        self.assertEqual(result.reason_code, "malformed")
+
+    def test_rejects_launch_options_without_command_placeholder(self) -> None:
+        result = self.coordinator().resolve_batch(
+            [
+                direct_entry_with_launch_options(
+                    str(self.root / "NoCommand.exe"),
+                    'STEAM_COMPAT_DATA_PATH="/p"',
+                    ("STEAM_COMPAT_DATA_PATH=/p",),
+                )
+            ]
+        ).results[0]
+
+        self.assertEqual(result.payload_status, "unknown")
+        self.assertEqual(result.reason_code, "malformed")
+
+    def test_rejects_duplicate_command_placeholders(self) -> None:
+        result = self.coordinator().resolve_batch(
+            [
+                direct_entry_with_launch_options(
+                    str(self.root / "DuplicateCommand.exe"),
+                    "%command% %command%",
+                    ("%command%", "%command%"),
+                )
+            ]
+        ).results[0]
+
+        self.assertEqual(result.payload_status, "unknown")
+        self.assertEqual(result.reason_code, "malformed")
+
+    def test_resolves_env_prefixed_shortcut_with_trailing_args(self) -> None:
+        payload = self.root / "TrailingArgs.exe"
+        payload.write_bytes(b"MZ")
+        result = self.coordinator().resolve_batch(
+            [
+                direct_entry_with_launch_options(
+                    str(payload),
+                    "ENV=1 %command% -nointro -windowed",
+                    ("ENV=1", "%command%", "-nointro", "-windowed"),
+                )
+            ]
+        ).results[0]
+
+        self.assertEqual(result.payload_status, "reachable")
+        self.assertEqual(result.payload_path, str(payload))
+
+    def test_resolves_command_placeholder_without_environment_assignments(self) -> None:
+        payload = self.root / "CommandPlaceholder.exe"
+        payload.write_bytes(b"MZ")
+        result = self.coordinator().resolve_batch(
+            [
+                direct_entry_with_launch_options(
+                    str(payload), "%command%", ("%command%",)
+                )
+            ]
+        ).results[0]
+
+        self.assertEqual(result.payload_status, "reachable")
+        self.assertEqual(result.payload_path, str(payload))
+
+    def test_resolves_direct_shortcut_without_launch_options(self) -> None:
+        payload = self.root / "NoLaunchOptions.exe"
+        payload.write_bytes(b"MZ")
+        result = self.coordinator().resolve_batch(
+            [direct_entry(str(payload))]
+        ).results[0]
+
+        self.assertEqual(result.payload_status, "reachable")
+        self.assertEqual(result.payload_path, str(payload))
 
     def test_resolves_a_safe_symlink_to_its_actual_payload(self) -> None:
         target = self.root / "Games" / "Game.exe"

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Final, cast
 import zlib
 
+from .direct import _direct_launch_options_accepted
 from .models import (
     MAX_SHORTCUT_FIELD_LENGTH,
     NormalizedShortcutEvidence,
@@ -277,7 +278,7 @@ def _request_from_record(record: Mapping[str, object]) -> ResolutionRequest | No
     if (
         flatpak_app_id is None
         and len(executable_tokens) == 1
-        and not launch_tokens
+        and _direct_launch_options_accepted(normalized.launch_option_tokens)
         and len(start_dir_tokens) <= 1
     ):
         return ResolutionRequest("direct", "recognized", normalized, ())
