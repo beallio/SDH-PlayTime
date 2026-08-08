@@ -30,7 +30,9 @@ def heroic_entry(
     shortcut_start_dir: str | None = None,
     start_dir_tokens: list[str] | None = None,
 ) -> dict[str, object]:
-    actual_executable_tokens = [executable] if executable_tokens is None else executable_tokens
+    actual_executable_tokens = (
+        [executable] if executable_tokens is None else executable_tokens
+    )
     actual_start_dir_tokens = [] if start_dir_tokens is None else start_dir_tokens
     return {
         "launcherKind": "heroic",
@@ -779,7 +781,7 @@ class HeroicGameResolutionTest(unittest.TestCase):
         )
         payload = self.write_payload("Games/Transformers/Transformers.exe")
 
-        # Case 1: absolute exe, matching flatpak_app_id, 5 launch tokens (tests option filtering)
+        # Case 1: 5 tokens with matching app id (option filtering)
         res1 = (
             self.coordinator()
             .resolve_batch(
@@ -800,7 +802,7 @@ class HeroicGameResolutionTest(unittest.TestCase):
             .results[0]
         )
 
-        # Case 2: absolute exe, 3 tokens, flatpak_app_id is None (tests derived flatpak identity)
+        # Case 2: flatpak_app_id is None (derived flatpak identity)
         res2 = (
             self.coordinator()
             .resolve_batch(
@@ -819,7 +821,7 @@ class HeroicGameResolutionTest(unittest.TestCase):
             .results[0]
         )
 
-        # Case 3: bare quoted "flatpak" exe, 3 tokens, matching flatpak_app_id (tests bare flatpak exe)
+        # Case 3: bare quoted "flatpak" exe (bare flatpak exe)
         res3 = (
             self.coordinator()
             .resolve_batch(
@@ -864,7 +866,7 @@ class HeroicGameResolutionTest(unittest.TestCase):
             .results[0]
         )
 
-        # Case 2: flatpak-launcher shortcut whose second surviving token is another flatpak app id
+        # Case 2: second surviving token is another flatpak app id
         other_flatpak_app_id = (
             self.coordinator()
             .resolve_batch(

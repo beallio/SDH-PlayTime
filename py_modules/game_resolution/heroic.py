@@ -232,9 +232,7 @@ class HeroicAdapter:
             if normalized.start_dir_tokens != (str(start_directory),):
                 raise RequestValidationError("malformed")
 
-        filtered_launch_options = _filter_option_tokens(
-            normalized.launch_option_tokens
-        )
+        filtered_launch_options = _filter_option_tokens(normalized.launch_option_tokens)
 
         is_flatpak_app_id = (
             normalized.flatpak_app_id is not None
