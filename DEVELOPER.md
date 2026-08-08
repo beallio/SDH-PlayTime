@@ -64,6 +64,15 @@ installation for that evidence.
 5. Update this matrix, user support wording, archive requirements, and the release
    archive test. Keep the variant `unknown` until all gates and live verification pass.
 
+## Remix version scheme
+
+Stable remix versions use `MAJOR.MINOR.PATCH-beallio.N`. Build metadata (`+`)
+is forbidden, and CI rejects it because Decky Loader compares versions with
+`compare-versions`, which ignores build metadata. Nightly and pull-request
+versions extend the stable version with
+`.dev.<UTC YYYYMMDD>.g<short_sha>`. The executable statement of this rule is
+[`tests/test_version_scheme.py`](tests/test_version_scheme.py).
+
 ## Updating the vendored archive dependency
 
 1. Deliberately change the single pin in `requirements-vendored.txt` and record the

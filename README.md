@@ -17,7 +17,7 @@ PlayTime is a Steam Deck plugin that tracks time spent in Steam and non-Steam ga
 
 This remix is distributed through [GitHub Releases](https://github.com/beallio/SDH-PlayTime-beallio-remix/releases) only. There is intentionally no separate Decky Store listing: installing a second Store identity would risk a second plugin installation and separate state.
 
-- Prefer a versioned **stable** release, for example [`v3.3.0+beallio.1`](https://github.com/beallio/SDH-PlayTime-beallio-remix/releases/tag/v3.3.0+beallio.1), and download `SDH-PlayTime-beallio-remix-v3.3.0+beallio.1.zip` plus its `.sha256` file.
+- Prefer a versioned **stable** release, for example [`v3.3.1-beallio.11`](https://github.com/beallio/SDH-PlayTime-beallio-remix/releases/tag/v3.3.1-beallio.11), and download `SDH-PlayTime-beallio-remix-v3.3.1-beallio.11.zip` plus its `.sha256` file.
 - [`remix-nightly`](https://github.com/beallio/SDH-PlayTime-beallio-remix/releases/tag/remix-nightly) is a rolling prerelease. Its expected files are `SDH-PlayTime-beallio-remix-nightly.zip` and `SDH-PlayTime-beallio-remix-nightly.zip.sha256`. It moves to newer commits and may regress; use it only when you can test and roll back.
 
 The ZIP name is release-specific, but its contents always have exactly one `SDH-PlayTime/` root. That root is intentional and must not be renamed during installation.
@@ -31,8 +31,8 @@ Choose a stable tag and its matching asset below. For a nightly, change only `RE
 ```bash
 set -euo pipefail
 
-RELEASE_TAG='v3.3.0+beallio.1'
-ARCHIVE_NAME='SDH-PlayTime-beallio-remix-v3.3.0+beallio.1.zip'
+RELEASE_TAG='v3.3.1-beallio.11'
+ARCHIVE_NAME='SDH-PlayTime-beallio-remix-v3.3.1-beallio.11.zip'
 RELEASE_BASE="https://github.com/beallio/SDH-PlayTime-beallio-remix/releases/download/${RELEASE_TAG}"
 
 PLUGIN_DIR='/home/deck/homebrew/plugins/SDH-PlayTime'

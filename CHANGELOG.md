@@ -13,6 +13,11 @@ Recommendation: for ease of reading, use the following order:
 - Changed
 - Fixed
 -->
+## [3.3.1-beallio.11] - 2026-08-08
+
+### Changed
+- Migrated remix releases to a Decky-updatable prerelease version scheme. Decky can now offer remix updates because the scheme moves the remix counter into SemVer prerelease precedence and forbids ignored build metadata.
+
 ## [3.3.0] - 2026-07-16
 
 ### Changed

@@ -121,7 +121,7 @@ class ReleaseArchiveTests(unittest.TestCase):
         self._recompute_checksum(archive)
 
     def test_stable_archive_has_canonical_payload_checksum_and_root(self) -> None:
-        version = "3.3.0+beallio.1"
+        version = "3.3.1-beallio.11"
         archive = self._build(version)
         checksum = archive.with_name(f"{archive.name}.sha256")
         self.assertEqual(
@@ -175,27 +175,29 @@ class ReleaseArchiveTests(unittest.TestCase):
                 )
 
     def test_custom_nightly_version_does_not_modify_checkout(self) -> None:
-        archive = self._build("3.3.0+beallio.gabcdef0")
+        archive = self._build("3.3.1-beallio.11.dev.20260808.gabcdef0")
         self.assertEqual(
             json.loads((self.source / "package.json").read_text())["version"], "old"
         )
         self.assertEqual(
             json.loads((self.source / "plugin.json").read_text())["version"], "old"
         )
-        release_archive.validate_archive(archive, "3.3.0+beallio.gabcdef0")
+        release_archive.validate_archive(
+            archive, "3.3.1-beallio.11.dev.20260808.gabcdef0"
+        )
 
     def test_validation_rejects_tampered_checksum_and_unsafe_members(self) -> None:
-        archive = self._build("3.3.0+beallio.1")
+        archive = self._build("3.3.1-beallio.11")
         archive.write_bytes(archive.read_bytes() + b"tamper")
         with self.assertRaises(release_archive.ArchiveValidationError):
-            release_archive.validate_archive(archive, "3.3.0+beallio.1")
+            release_archive.validate_archive(archive, "3.3.1-beallio.11")
 
         for member_name in (
             "SDH-PlayTime/dist//index.js",
             "SDH-PlayTime/dist/./index.js",
             "SDH-PlayTime/../escape",
         ):
-            archive = self._build("3.3.0+beallio.1")
+            archive = self._build("3.3.1-beallio.11")
             self._append_member(archive, member_name, b"noncanonical")
             with (
                 self.subTest(member_name=member_name),
@@ -203,10 +205,10 @@ class ReleaseArchiveTests(unittest.TestCase):
                     release_archive.ArchiveValidationError, "unsafe archive member"
                 ),
             ):
-                release_archive.validate_archive(archive, "3.3.0+beallio.1")
+                release_archive.validate_archive(archive, "3.3.1-beallio.11")
 
     def test_validation_rejects_symlink_directory_member(self) -> None:
-        archive = self._build("3.3.0+beallio.1")
+        archive = self._build("3.3.1-beallio.11")
         self._append_member(
             archive,
             "SDH-PlayTime/dist/link/",
@@ -216,10 +218,10 @@ class ReleaseArchiveTests(unittest.TestCase):
         with self.assertRaisesRegex(
             release_archive.ArchiveValidationError, "symbolic link"
         ):
-            release_archive.validate_archive(archive, "3.3.0+beallio.1")
+            release_archive.validate_archive(archive, "3.3.1-beallio.11")
 
     def test_validation_rejects_test_modules_and_fixtures(self) -> None:
-        archive = self._build("3.3.0+beallio.1")
+        archive = self._build("3.3.1-beallio.11")
         self._append_member(
             archive,
             "SDH-PlayTime/py_modules/tests/fixtures/fixture.json",
@@ -228,10 +230,10 @@ class ReleaseArchiveTests(unittest.TestCase):
         with self.assertRaisesRegex(
             release_archive.ArchiveValidationError, "excluded development payload"
         ):
-            release_archive.validate_archive(archive, "3.3.0+beallio.1")
+            release_archive.validate_archive(archive, "3.3.1-beallio.11")
 
     def test_validation_requires_runtime_entries(self) -> None:
-        archive = self._build("3.3.0+beallio.1")
+        archive = self._build("3.3.1-beallio.11")
         for missing_name in (
             "SDH-PlayTime/DEVELOPER.md",
             "SDH-PlayTime/dist/index.js",
@@ -260,10 +262,10 @@ class ReleaseArchiveTests(unittest.TestCase):
                     release_archive.ArchiveValidationError, "missing required payload"
                 ),
             ):
-                release_archive.validate_archive(incomplete, "3.3.0+beallio.1")
+                release_archive.validate_archive(incomplete, "3.3.1-beallio.11")
 
     def test_validation_rejects_duplicate_paths(self) -> None:
-        archive = self._build("3.3.0+beallio.1")
+        archive = self._build("3.3.1-beallio.11")
         duplicate = self.workdir / "duplicate.zip"
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
@@ -279,10 +281,10 @@ class ReleaseArchiveTests(unittest.TestCase):
             f"{hashlib.sha256(duplicate.read_bytes()).hexdigest()}  {duplicate.name}\n"
         )
         with self.assertRaises(release_archive.ArchiveValidationError):
-            release_archive.validate_archive(duplicate, "3.3.0+beallio.1")
+            release_archive.validate_archive(duplicate, "3.3.1-beallio.11")
 
     def test_validation_rejects_invalid_vendored_pyyaml_payload(self) -> None:
-        version = "3.3.0+beallio.1"
+        version = "3.3.1-beallio.11"
         dist_info = "SDH-PlayTime/py_modules/pyyaml-6.0.3.dist-info"
         cases = (
             (
@@ -359,7 +361,7 @@ class ReleaseArchiveTests(unittest.TestCase):
             "modified source\n", encoding="utf-8"
         )
         with self.assertRaises(release_archive.ArchiveValidationError):
-            self._build("3.3.0+beallio.1")
+            self._build("3.3.1-beallio.11")
 
 
 if __name__ == "__main__":

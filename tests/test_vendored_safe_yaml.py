@@ -49,7 +49,7 @@ class VendoredSafeYamlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             workdir = Path(temporary_directory)
             archive = release_archive.build_archive(
-                ROOT, "3.3.0+beallio.vendor-test", workdir / "PlayTime.zip"
+                ROOT, "3.3.1-beallio.vendor-test", workdir / "PlayTime.zip"
             )
             with zipfile.ZipFile(archive) as zip_file:
                 names = set(zip_file.namelist())
