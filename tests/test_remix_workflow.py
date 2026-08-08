@@ -14,7 +14,7 @@ WORKFLOW = (
 class RemixWorkflowTests(unittest.TestCase):
     def test_only_remix_events_trigger_the_workflow(self) -> None:
         self.assertIn("branches: [remix]", WORKFLOW)
-        self.assertIn("tags: ['v*\\+beallio.*']", WORKFLOW)
+        self.assertIn("tags: ['v*-beallio.*']", WORKFLOW)
         self.assertIn("pull_request:", WORKFLOW)
         self.assertIn("workflow_dispatch:", WORKFLOW)
 
@@ -83,10 +83,21 @@ class RemixWorkflowTests(unittest.TestCase):
         self.assertIn('version="${GITHUB_REF_NAME#v}"', WORKFLOW)
         self.assertIn('checked_package_version" != "$version"', WORKFLOW)
         self.assertIn('checked_plugin_version" != "$version"', WORKFLOW)
-        self.assertIn('version="${base_version}+beallio.g${short_sha}"', WORKFLOW)
+        self.assertIn(
+            'version="${checked_package_version}.dev.${build_date}.g${short_sha}"',
+            WORKFLOW,
+        )
+        self.assertNotIn("base_version", WORKFLOW)
         self.assertIn("group: remix-nightly-publication", WORKFLOW)
         self.assertIn('test "$(git rev-parse origin/remix)" = "$GITHUB_SHA"', WORKFLOW)
         self.assertIn("git push --force origin refs/tags/remix-nightly", WORKFLOW)
+
+    def test_the_workflow_rejects_build_metadata_versions(self) -> None:
+        self.assertIn("*+*)", WORKFLOW)
+        self.assertIn(
+            "Remix versions must not use SemVer build metadata: Decky ignores it when comparing versions.",
+            WORKFLOW,
+        )
 
 
 if __name__ == "__main__":
