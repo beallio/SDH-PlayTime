@@ -103,6 +103,12 @@ class _HeroicIdentity:
     source: Literal["native", "flatpak"] = "native"
 
 
+class _MissingExecutableError(ValueError):
+    def __init__(self, install_path: Path) -> None:
+        super().__init__("Heroic metadata does not contain an executable")
+        self.install_path = install_path
+
+
 @dataclass(frozen=True, slots=True)
 class _MetadataCandidate:
     runner: str
@@ -110,6 +116,7 @@ class _MetadataCandidate:
     install_path: Path | None
     source_root: Path
     sideload: bool
+    missing_executable: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,7 +333,20 @@ class HeroicAdapter:
                 payload = _sideload_payload(record)
                 candidates.append(_MetadataCandidate(runner, payload, None, root, True))
                 continue
-            install_path, executable = _installed_payload(record)
+            try:
+                install_path, executable = _installed_payload(record)
+            except _MissingExecutableError as error:
+                candidates.append(
+                    _MetadataCandidate(
+                        runner,
+                        error.install_path,
+                        error.install_path,
+                        root,
+                        False,
+                        True,
+                    )
+                )
+                continue
             payload = install_path / executable
             settings = self._read_settings(root, identity.app_id)
             selected = _select_payload(
@@ -364,7 +384,13 @@ class HeroicAdapter:
         try:
             probe_result = self._probe.probe_regular_file(candidate.payload_path)
         except Exception:
+            if candidate.missing_executable:
+                return self._unknown(request, "malformed", metadata_status="invalid")
             return self._unknown(request, "probe_failure", metadata_status="resolved")
+        if candidate.missing_executable:
+            if probe_result.reason_code == "drive_disconnected":
+                return self._result_from_probe_failure(request, probe_result)
+            return self._unknown(request, "malformed", metadata_status="invalid")
         if probe_result.reason_code is not None:
             return self._result_from_probe_failure(request, probe_result)
         assert probe_result.payload_path is not None
@@ -506,13 +532,14 @@ def _deduplicate_candidates(
     candidates: Sequence[_MetadataCandidate],
 ) -> tuple[_MetadataCandidate, ...]:
     unique: list[_MetadataCandidate] = []
-    seen: set[tuple[str, Path, Path | None, bool]] = set()
+    seen: set[tuple[str, Path, Path | None, bool, bool]] = set()
     for candidate in candidates:
         key = (
             candidate.runner,
             candidate.payload_path,
             candidate.install_path,
             candidate.sideload,
+            candidate.missing_executable,
         )
         if key in seen:
             continue
@@ -547,9 +574,13 @@ def _installed_payload(record: Mapping[str, object]) -> tuple[Path, PurePosixPat
     install_path = _absolute_payload_path(
         record.get("install_path", record.get("installPath"))
     )
-    executable = record.get("executable")
-    if not isinstance(executable, str) or not executable:
+    if "executable" not in record:
+        raise _MissingExecutableError(install_path)
+    executable = record["executable"]
+    if not isinstance(executable, str):
         raise RequestValidationError("malformed")
+    if not executable:
+        raise _MissingExecutableError(install_path)
     relative = PurePosixPath(executable)
     if (
         relative.is_absolute()
