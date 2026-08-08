@@ -10,6 +10,7 @@ from py_modules.game_resolution import FilesystemProbe, GameResolutionCoordinato
 from py_modules.game_resolution.filesystem import FilesystemProbeResult
 from py_modules.game_resolution import heroic as heroic_module
 from py_modules.game_resolution.heroic import HeroicAdapter, HeroicConfigRoots
+from py_modules.game_resolution.models import ReasonCode
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "heroic_game_resolution.json"
@@ -65,6 +66,19 @@ class TogglePayloadProbe:
             stat.S_IRUSR | stat.S_IXUSR,
             b"MZ\x90\x00",
         )
+
+
+class ReasonPayloadProbe:
+    def __init__(self, reason_code: ReasonCode) -> None:
+        self.reason_code = reason_code
+
+    def probe_regular_file(self, candidate: Path) -> FilesystemProbeResult:
+        return FilesystemProbeResult(None, self.reason_code)
+
+
+class RaisingPayloadProbe:
+    def probe_regular_file(self, candidate: Path) -> FilesystemProbeResult:
+        raise OSError("probe failed")
 
 
 class HeroicGameResolutionTest(unittest.TestCase):
@@ -698,6 +712,208 @@ class HeroicGameResolutionTest(unittest.TestCase):
         self.assertEqual(disconnected.reason_code, "drive_disconnected")
         self.assertEqual(reconnected.payload_status, "reachable")
         self.assertEqual(reconnected.payload_path, str(payload))
+
+    def test_empty_gog_executable_reports_disconnected_drive(self) -> None:
+        self.write_json(
+            "gog_store/installed.json",
+            {
+                "installed": [
+                    {
+                        "appName": "empty-executable-game",
+                        "install_path": "/run/media/deck/ssd_1tb/Games/Empty Game",
+                        "executable": "",
+                    }
+                ]
+            },
+        )
+        entry = heroic_entry(
+            executable="/opt/Heroic/heroic",
+            launch_options=(
+                "heroic://launch?appName=empty-executable-game&runner=gog",
+            ),
+        )
+
+        result = (
+            self.coordinator(FilesystemProbe(mount_entries=lambda: ()))
+            .resolve_batch([entry])
+            .results[0]
+        )
+
+        self.assertEqual(result.payload_status, "unreachable")
+        self.assertEqual(result.metadata_status, "resolved")
+        self.assertEqual(result.reason_code, "drive_disconnected")
+
+    def test_missing_gog_executable_reports_disconnected_drive(self) -> None:
+        self.write_json(
+            "gog_store/installed.json",
+            {
+                "installed": [
+                    {
+                        "appName": "missing-executable-game",
+                        "install_path": "/run/media/deck/ssd_1tb/Games/Missing Game",
+                    }
+                ]
+            },
+        )
+        entry = heroic_entry(
+            executable="/opt/Heroic/heroic",
+            launch_options=(
+                "heroic://launch?appName=missing-executable-game&runner=gog",
+            ),
+        )
+
+        result = (
+            self.coordinator(FilesystemProbe(mount_entries=lambda: ()))
+            .resolve_batch([entry])
+            .results[0]
+        )
+
+        self.assertEqual(result.payload_status, "unreachable")
+        self.assertEqual(result.metadata_status, "resolved")
+        self.assertEqual(result.reason_code, "drive_disconnected")
+
+    def test_empty_gog_executable_on_connected_drive_remains_malformed(self) -> None:
+        self.write_json(
+            "gog_store/installed.json",
+            {
+                "installed": [
+                    {
+                        "appName": "empty-executable-game",
+                        "install_path": "/run/media/deck/ssd_1tb/Games/Empty Game",
+                        "executable": "",
+                    }
+                ]
+            },
+        )
+        entry = heroic_entry(
+            executable="/opt/Heroic/heroic",
+            launch_options=(
+                "heroic://launch?appName=empty-executable-game&runner=gog",
+            ),
+        )
+        probe = TogglePayloadProbe(self.write_payload("Gog/Connected.exe"))
+        probe.connected = True
+
+        result = self.coordinator(probe).resolve_batch([entry]).results[0]
+
+        self.assertEqual(result.payload_status, "unknown")
+        self.assertEqual(result.metadata_status, "invalid")
+        self.assertEqual(result.reason_code, "malformed")
+
+    def test_empty_gog_executable_only_accepts_drive_disconnected_probe_result(
+        self,
+    ) -> None:
+        self.write_json(
+            "gog_store/installed.json",
+            {
+                "installed": [
+                    {
+                        "appName": "empty-executable-game",
+                        "install_path": "/run/media/deck/ssd_1tb/Games/Empty Game",
+                        "executable": "",
+                    }
+                ]
+            },
+        )
+        entry = heroic_entry(
+            executable="/opt/Heroic/heroic",
+            launch_options=(
+                "heroic://launch?appName=empty-executable-game&runner=gog",
+            ),
+        )
+
+        for reason_code in (
+            "payload_missing",
+            "kind_mismatch",
+            "permission_denied",
+            "probe_failure",
+        ):
+            with self.subTest(reason_code=reason_code):
+                result = (
+                    self.coordinator(ReasonPayloadProbe(reason_code))
+                    .resolve_batch([entry])
+                    .results[0]
+                )
+
+                self.assertEqual(result.payload_status, "unknown")
+                self.assertEqual(result.metadata_status, "invalid")
+                self.assertEqual(result.reason_code, "malformed")
+
+        with self.subTest(reason_code="probe_exception"):
+            result = (
+                self.coordinator(RaisingPayloadProbe())
+                .resolve_batch([entry])
+                .results[0]
+            )
+
+            self.assertEqual(result.payload_status, "unknown")
+            self.assertEqual(result.metadata_status, "invalid")
+            self.assertEqual(result.reason_code, "malformed")
+
+    def test_other_malformed_gog_executables_stay_malformed_on_disconnected_drive(
+        self,
+    ) -> None:
+        entry = heroic_entry(
+            executable="/opt/Heroic/heroic",
+            launch_options=(
+                "heroic://launch?appName=malformed-executable-game&runner=gog",
+            ),
+        )
+        malformed_executables: tuple[object, ...] = (
+            "/absolute/Game.exe",
+            "bin/../Game.exe",
+            r"bin\Game.exe",
+            None,
+            42,
+        )
+
+        for executable in malformed_executables:
+            with self.subTest(executable=executable):
+                self.write_json(
+                    "gog_store/installed.json",
+                    {
+                        "installed": [
+                            {
+                                "appName": "malformed-executable-game",
+                                "install_path": (
+                                    "/run/media/deck/ssd_1tb/Games/Malformed Game"
+                                ),
+                                "executable": executable,
+                            }
+                        ]
+                    },
+                )
+                result = (
+                    self.coordinator(
+                        TogglePayloadProbe(self.write_payload("Gog/Connected.exe"))
+                    )
+                    .resolve_batch([entry])
+                    .results[0]
+                )
+
+                self.assertEqual(result.payload_status, "unknown")
+                self.assertEqual(result.metadata_status, "invalid")
+                self.assertEqual(result.reason_code, "malformed")
+
+    def test_sideload_fixture_remains_resolved(self) -> None:
+        self.write_json(
+            "sideload_apps/library.json",
+            self.fixtures["metadata"]["sideloadLibrary"],  # type: ignore[index]
+        )
+        payload = self.write_payload("ROMs/rom-game.chd", b"CHD\x00")
+        shortcut = self.fixtures["shortcuts"]["sideload_query"]  # type: ignore[index]
+        entry = heroic_entry(
+            executable=shortcut["shortcutExe"],  # type: ignore[index]
+            launch_options=(shortcut["shortcutLaunchOptions"],),  # type: ignore[index]
+        )
+
+        result = self.coordinator().resolve_batch([entry]).results[0]
+
+        self.assertEqual(result.metadata_status, "resolved")
+        self.assertEqual(result.payload_status, "reachable")
+        self.assertEqual(result.payload_kind, "file")
+        self.assertIsNone(result.reason_code)
+        self.assertEqual(result.payload_path, str(payload))
 
     def test_default_registry_includes_heroic_and_rejects_unverified_custom_roots(
         self,
