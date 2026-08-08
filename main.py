@@ -79,6 +79,7 @@ class Plugin:
     files: Files = Files()
     game_resolution_coordinator: GameResolutionCoordinator = GameResolutionCoordinator()
     game_checksum_coordinator: GameChecksumCoordinator
+    shortcut_catalog: SteamShortcutCatalog
     games: Games
     statistics: Statistics
     time_tracking: TimeTracking
@@ -90,13 +91,15 @@ class Plugin:
         try:
             # Initialize UserManager for per-user database handling
             self.user_manager = UserManager(data_dir, decky.logger)
+            shortcut_catalog = SteamShortcutCatalog(
+                Path(decky_user_home),
+                lambda: self.user_manager.current_user_id,
+            )
+            self.shortcut_catalog = shortcut_catalog
             self.game_checksum_coordinator = GameChecksumCoordinator(
                 self.game_resolution_coordinator,
                 self.files,
-                SteamShortcutCatalog(
-                    Path(decky_user_home),
-                    lambda: self.user_manager.current_user_id,
-                ),
+                shortcut_catalog,
             )
 
             # NOTE: Services (games, statistics, time_tracking) will be initialized
@@ -396,6 +399,33 @@ class Plugin:
                 "[is_flatpak_app_installed] Unable to determine flatpak install state"
             )
             return False
+
+    async def get_shortcut_app_details(self, app_id: int) -> dict[str, object]:
+        try:
+            if isinstance(app_id, bool) or not isinstance(app_id, int):
+                return {"status": "failure", "reason": "missing-details"}
+            lookup_app_id = app_id & 0xFFFFFFFF
+            outcome = self.shortcut_catalog.get_request(lookup_app_id)
+            if outcome.request is None:
+                return {"status": "failure", "reason": "missing-details"}
+
+            normalized = outcome.request.normalized
+            return {
+                "status": "success",
+                "details": {
+                    "strShortcutExe": normalized.shortcut_exe or "",
+                    "strShortcutLaunchOptions": (
+                        normalized.shortcut_launch_options or ""
+                    ),
+                    "strShortcutStartDir": normalized.shortcut_start_dir or "",
+                    "strFlatpakAppID": normalized.flatpak_app_id or "",
+                },
+            }
+        except Exception:
+            decky.logger.exception(
+                "[get_shortcut_app_details] Unable to read shortcut evidence"
+            )
+            return {"status": "failure", "reason": "callback-error"}
 
     async def get_games_dictionary(self):
         try:

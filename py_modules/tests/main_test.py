@@ -7,6 +7,7 @@ import sqlite3
 from datetime import datetime
 from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from py_modules.tests.helpers import remove_date_fields
 
@@ -1059,6 +1060,44 @@ class TestPlugin(unittest.IsolatedAsyncioTestCase):
 
         malformed = await plugin.resolve_game_payloads([request] * 33)
         self.assertEqual(malformed, {"results": [], "error": "malformed"})
+
+    async def test_get_shortcut_app_details_returns_evidence(self):
+        plugin = self.main.Plugin()
+        await plugin._main()
+        response = await plugin.get_shortcut_app_details(
+            0x80000001 | 0x80000000
+        )
+
+        self.assertEqual(response, {"status": "failure", "reason": "missing-details"})
+
+    async def test_get_shortcut_app_details_uses_catalog_request(self):
+        plugin = self.main.Plugin()
+        await plugin._main()
+        fake_request = SimpleNamespace(
+            request=SimpleNamespace(
+                normalized=SimpleNamespace(
+                    shortcut_exe='/usr/bin/flatpak',
+                    shortcut_launch_options='run com.github.mtkennerly.ludusavi',
+                    shortcut_start_dir=None,
+                    flatpak_app_id='com.github.mtkennerly.ludusavi',
+                )
+            )
+        )
+        with patch.object(plugin.shortcut_catalog, "get_request", return_value=fake_request):
+            response = await plugin.get_shortcut_app_details(3245664592)
+
+        self.assertEqual(
+            response,
+            {
+                "status": "success",
+                "details": {
+                    "strShortcutExe": "/usr/bin/flatpak",
+                    "strShortcutLaunchOptions": "run com.github.mtkennerly.ludusavi",
+                    "strFlatpakAppID": "com.github.mtkennerly.ludusavi",
+                    "strShortcutStartDir": "",
+                },
+            },
+        )
 
     async def test_game_resolution_rpc_preserves_entry_cardinality_on_failure(self):
         plugin = self.main.Plugin()

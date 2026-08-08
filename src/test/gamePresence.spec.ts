@@ -92,6 +92,19 @@ function reachableResult() {
 	};
 }
 
+function flatpakReachableResult() {
+	return {
+		launcherKind: "flatpak" as const,
+		classificationStatus: "recognized" as const,
+		metadataStatus: "not_requested" as const,
+		payloadStatus: "reachable" as const,
+		payloadKind: "directory" as const,
+		provenance: "untrusted_hint" as const,
+		reasonCode: null,
+		payloadPath: "/var/lib/flatpak/app/com.github.mtkennerly.ludusavi",
+	};
+}
+
 function build(overrides: Partial<GamePresenceBuildInput> = {}) {
 	return buildGamePresenceSnapshot({
 		candidates: [],
@@ -132,7 +145,15 @@ type RuntimeTestFixtures = {
 			apps: Map<number, TestDeckDesktopApp>;
 		};
 	};
-	SteamClient?: { Apps?: { BIsAppInstalled: (appId: number) => boolean } };
+	SteamClient?: {
+		Apps?: {
+			BIsAppInstalled?: (appId: number) => boolean;
+			RegisterForAppDetails?: (
+				appId: number,
+				callback: (details?: AppDetails) => void,
+			) => { unregister: () => void };
+		};
+	};
 };
 
 function setRuntimeFixtures(fixture: Partial<RuntimeTestFixtures>) {
@@ -451,6 +472,45 @@ describe("buildGamePresenceSnapshot", () => {
 						payloadKind: "directory",
 						provenance: "untrusted_hint",
 						reasonCode: "malformed",
+						payloadPath: null,
+					},
+				],
+				error: null,
+			}),
+			checkFlatpakInstall: async () => true,
+		});
+
+		expect(snapshot.candidates[0]).toMatchObject({
+			id: nonSteamId,
+			source: "non_steam",
+			availability: {
+				status: "reachable",
+				label: "Available on this Deck",
+			},
+		});
+	});
+
+	test("falls back to flatpak install probe when flatpak payload is unsupported", async () => {
+		const nonSteamId = String(0x80000001);
+		const snapshot = await build({
+			candidates: [
+				{ game: { id: nonSteamId, name: "Flatpak Shortcut" }, duration: 1 },
+			],
+			nonSteamInventory: {
+				status: "complete",
+				apps: [{ id: nonSteamId, name: "Flatpak Shortcut" }],
+			},
+			getAppDetails: async () => flatpakDetails(1234),
+			resolvePayloads: async () => ({
+				results: [
+					{
+						launcherKind: "flatpak",
+						classificationStatus: "recognized",
+						metadataStatus: "not_requested",
+						payloadStatus: "unknown",
+						payloadKind: "directory",
+						provenance: "untrusted_hint",
+						reasonCode: "unsupported",
 						payloadPath: null,
 					},
 				],
@@ -1071,6 +1131,136 @@ describe("buildGamePresenceSnapshot", () => {
 				label: "Available on this Deck",
 			},
 		});
+	});
+
+	test("falls back to backend shortcut details when callback registration fails", async () => {
+		const nonSteamId = String(0x80000001);
+		const expectedCallbackAppId = Number(nonSteamId) - 0x100000000;
+		const expectedCatalogAppId = expectedCallbackAppId >>> 0;
+		let shortcutDetailsCalledWithCatalogId: number | undefined;
+
+		backendCallHandler = async (...args: unknown[]) => {
+			const method = args[0];
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [{ game: { id: nonSteamId, name: "Ludusavi" } }];
+			}
+			if (method === BACK_END_API.GET_SHORTCUT_APP_DETAILS) {
+				shortcutDetailsCalledWithCatalogId = args[1] as number;
+				return {
+					status: "success",
+					details: {
+						strShortcutExe: "/usr/bin/flatpak",
+						strShortcutLaunchOptions: "run com.github.mtkennerly.ludusavi",
+						strFlatpakAppID: "com.github.mtkennerly.ludusavi",
+					},
+				};
+			}
+			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+				return { results: [flatpakReachableResult()], error: null };
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
+
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: expectedCallbackAppId,
+						display_name: "Ludusavi",
+						app_type: APP_TYPE.THIRD_PARTY,
+					},
+				],
+			},
+			SteamClient: {
+				Apps: {
+					RegisterForAppDetails: () => {
+						throw new Error("Unknown method");
+					},
+				},
+			},
+		});
+
+		const snapshot = await refreshCurrentGamePresenceSnapshot();
+
+		expect(snapshot.candidates).toHaveLength(1);
+		expect(snapshot.candidates[0]?.id).toBe(nonSteamId);
+		expect(snapshot.candidates[0]).toMatchObject({
+			source: "non_steam",
+			inventory: { status: "current", reasons: [] },
+			availability: {
+				status: "reachable",
+				reasons: [],
+				label: "Available on this Deck",
+			},
+		});
+		expect(shortcutDetailsCalledWithCatalogId).toBe(expectedCatalogAppId);
+	});
+
+	test("falls back to backend shortcut details when the callback yields no details", async () => {
+		const nonSteamId = String(0x80000001);
+		const expectedCallbackAppId = Number(nonSteamId) - 0x100000000;
+		const expectedCatalogAppId = expectedCallbackAppId >>> 0;
+		let shortcutDetailsCalledWithCatalogId: number | undefined;
+
+		backendCallHandler = async (...args: unknown[]) => {
+			const method = args[0];
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [{ game: { id: nonSteamId, name: "Ludusavi" } }];
+			}
+			if (method === BACK_END_API.GET_SHORTCUT_APP_DETAILS) {
+				shortcutDetailsCalledWithCatalogId = args[1] as number;
+				// Mirrors the Deck: bare `flatpak` exe, app id only in launch options.
+				return {
+					status: "success",
+					details: {
+						strShortcutExe: '"flatpak"',
+						strShortcutLaunchOptions: "run com.github.mtkennerly.ludusavi",
+						strShortcutStartDir: "/usr/bin/",
+						strFlatpakAppID: "",
+					},
+				};
+			}
+			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+				return { results: [flatpakReachableResult()], error: null };
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
+
+		setRuntimeFixtures({
+			appStore: {
+				allApps: [
+					{
+						appid: expectedCallbackAppId,
+						display_name: "Ludusavi",
+						app_type: APP_TYPE.THIRD_PARTY,
+					},
+				],
+			},
+			SteamClient: {
+				Apps: {
+					// Registration succeeds, but Steam has no details for the shortcut.
+					RegisterForAppDetails: (
+						_appId: number,
+						callback: (details?: AppDetails) => void,
+					) => {
+						callback(undefined);
+						return { unregister: () => {} };
+					},
+				},
+			},
+		});
+
+		const snapshot = await refreshCurrentGamePresenceSnapshot();
+
+		expect(snapshot.candidates[0]).toMatchObject({
+			source: "non_steam",
+			availability: {
+				status: "reachable",
+				reasons: [],
+				label: "Available on this Deck",
+			},
+		});
+		expect(shortcutDetailsCalledWithCatalogId).toBe(expectedCatalogAppId);
 	});
 
 	test("treats inferred high-bit tracked IDs as native when the runtime proves native membership", async () => {

@@ -16,6 +16,7 @@ export const BACK_END_API = {
 	GET_GAME_CHECKSUM: "get_game_checksum",
 	RESOLVE_GAME_PAYLOADS: "resolve_game_payloads",
 	IS_FLATPAK_APP_INSTALLED: "is_flatpak_app_installed",
+	GET_SHORTCUT_APP_DETAILS: "get_shortcut_app_details",
 	GET_GAMES_DICTIONARY: "get_games_dictionary",
 	GET_ASSOCIATION_CANDIDATES: "get_association_candidates",
 	SAVE_GAME_CHECKSUM: "save_game_checksum",

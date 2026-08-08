@@ -162,6 +162,15 @@ export class Backend {
 		);
 	}
 
+	public static async getShortcutAppDetails(
+		appId: number,
+	): Promise<AppDetailsResult> {
+		return await call<[number], AppDetailsResult>(
+			BACK_END_API.GET_SHORTCUT_APP_DETAILS,
+			appId,
+		);
+	}
+
 	public static async getGamesDictionary(): Promise<Array<GameDictionary>> {
 		return await call<[], Array<GameDictionary>>(
 			BACK_END_API.GET_GAMES_DICTIONARY,

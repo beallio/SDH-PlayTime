@@ -737,7 +737,6 @@ export async function buildGamePresenceSnapshot(
 				if (
 					request.launcherKind === "flatpak" &&
 					result.payloadStatus === "unknown" &&
-					result.reasonCode === "malformed" &&
 					typeof flatpakAppId === "string" &&
 					flatpakAppId.length > 0 &&
 					flatpakInstallProbe
@@ -934,6 +933,23 @@ function runtimeNativeInstallProbe(): NativeInstallProbe | undefined {
 	return (appId) => ({ status: probe(appId) ? "installed" : "not_installed" });
 }
 
+async function runtimeGetAppDetails(appId: number): Promise<AppDetailsResult> {
+	const directResult = await getAppDetailsResult(appId);
+	if (directResult.status === "success") {
+		return directResult;
+	}
+
+	const catalogAppId = appId < 0 ? appId >>> 0 : appId;
+	try {
+		const shortcutDetails = await Backend.getShortcutAppDetails(catalogAppId);
+		return shortcutDetails.status === "success" && shortcutDetails.details
+			? shortcutDetails
+			: directResult;
+	} catch {
+		return directResult;
+	}
+}
+
 function runtimeFlatpakInstallProbe(
 	resolvePayloads: GamePresenceBuildInput["resolvePayloads"],
 ): FlatpakInstallProbe {
@@ -969,7 +985,7 @@ export async function refreshCurrentGamePresenceSnapshot(
 		nonSteamInventory:
 			runtime.nonSteamInventory?.() ?? runtimeNonSteamInventory(),
 		runningAppIds: runtime.runningAppIds?.() ?? runtimeRunningAppIds(),
-		getAppDetails: runtime.getAppDetails ?? getAppDetailsResult,
+		getAppDetails: runtime.getAppDetails ?? runtimeGetAppDetails,
 		nativeInstallProbe:
 			runtime.nativeInstallProbe ?? runtimeNativeInstallProbe(),
 		checkFlatpakInstall:
