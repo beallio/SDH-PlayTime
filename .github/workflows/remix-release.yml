@@ -3,7 +3,7 @@ name: Remix quality and release
 on:
   push:
     branches: [remix]
-    tags: ['v*\+beallio.*']
+    tags: ['v*-beallio.*']
   pull_request:
     branches: [remix]
   workflow_dispatch:
@@ -136,6 +136,18 @@ jobs:
           checked_package_version="$(node -p "require('./package.json').version")"
           checked_plugin_version="$(node -p "require('./plugin.json').version")"
 
+          case "$checked_package_version" in
+            *+*)
+              echo "Remix versions must not use SemVer build metadata: Decky ignores it when comparing versions."
+              exit 1
+              ;;
+          esac
+
+          if [ "$checked_package_version" != "$checked_plugin_version" ]; then
+            echo "package.json and plugin.json versions must be identical."
+            exit 1
+          fi
+
           if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ]; then
             version="${DISPATCH_VERSION:-$checked_package_version}"
             asset_name="SDH-PlayTime-beallio-remix-manual-${version}.zip"
@@ -147,12 +159,12 @@ jobs:
             fi
             asset_name="SDH-PlayTime-beallio-remix-${GITHUB_REF_NAME}.zip"
           elif [ "$GITHUB_EVENT_NAME" = 'push' ]; then
-            base_version="${checked_package_version%%+*}"
-            version="${base_version}+beallio.g${short_sha}"
+            build_date="$(date -u +%Y%m%d)"
+            version="${checked_package_version}.dev.${build_date}.g${short_sha}"
             asset_name='SDH-PlayTime-beallio-remix-nightly.zip'
           else
-            base_version="${checked_package_version%%+*}"
-            version="${base_version}+beallio.g${short_sha}"
+            build_date="$(date -u +%Y%m%d)"
+            version="${checked_package_version}.dev.${build_date}.g${short_sha}"
             asset_name="SDH-PlayTime-beallio-remix-pr-${short_sha}.zip"
           fi
 

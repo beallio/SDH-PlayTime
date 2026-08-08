@@ -1,6 +1,6 @@
 {
   "name": "PlayTime",
-  "version": "3.3.0+beallio.10",
+  "version": "3.3.1-beallio.11",
   "description": "PlayTime",
   "type": "module",
   "scripts": {
