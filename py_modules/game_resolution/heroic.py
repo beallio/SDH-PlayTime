@@ -203,9 +203,25 @@ class HeroicAdapter:
             normalized.executable_tokens + normalized.launch_option_tokens
         ):
             raise RequestValidationError("malformed")
-        executable = _single_literal_absolute_path(normalized.shortcut_exe)
-        if normalized.executable_tokens != (str(executable),):
+
+        unquoted_exe = _unquoted_string(normalized.shortcut_exe)
+        try:
+            executable: Path | None = _absolute_payload_path(unquoted_exe)
+        except RequestValidationError:
+            executable = None
+
+        if executable is not None:
+            exe_name = executable.name.casefold()
+            expected_exe_token = str(executable)
+        else:
+            exe_name = PurePosixPath(unquoted_exe).name.casefold()
+            if exe_name != "flatpak":
+                raise RequestValidationError("malformed")
+            expected_exe_token = unquoted_exe
+
+        if normalized.executable_tokens != (expected_exe_token,):
             raise RequestValidationError("malformed")
+
         if normalized.shortcut_start_dir is None:
             if normalized.start_dir_tokens:
                 raise RequestValidationError("malformed")
@@ -216,28 +232,44 @@ class HeroicAdapter:
             if normalized.start_dir_tokens != (str(start_directory),):
                 raise RequestValidationError("malformed")
 
-        is_flatpak = (
-            executable.name.casefold() == "flatpak"
-            and normalized.flatpak_app_id is not None
+        filtered_launch_options = _filter_option_tokens(
+            normalized.launch_option_tokens
+        )
+
+        is_flatpak_app_id = (
+            normalized.flatpak_app_id is not None
             and normalized.flatpak_app_id.casefold() == HEROIC_FLATPAK_APP_ID
         )
+        is_derived_flatpak_app_id = (
+            normalized.flatpak_app_id is None
+            and len(filtered_launch_options) >= 2
+            and filtered_launch_options[0] == "run"
+            and filtered_launch_options[1].casefold() == HEROIC_FLATPAK_APP_ID
+        )
+
+        is_flatpak = exe_name == "flatpak" and (
+            is_flatpak_app_id or is_derived_flatpak_app_id
+        )
         if is_flatpak:
-            launch_options = normalized.launch_option_tokens
-            if len(launch_options) == 4 and launch_options[2] == "--":
-                uri = launch_options[3]
-            elif len(launch_options) == 3:
-                uri = launch_options[2]
-            else:
+            if len(filtered_launch_options) != 3:
                 raise RequestValidationError("malformed")
             if (
-                launch_options[0] != "run"
-                or launch_options[1].casefold() != HEROIC_FLATPAK_APP_ID
+                filtered_launch_options[0] != "run"
+                or filtered_launch_options[1].casefold() != HEROIC_FLATPAK_APP_ID
             ):
                 raise RequestValidationError("malformed")
+            if (
+                normalized.flatpak_app_id is not None
+                and normalized.flatpak_app_id.casefold() != HEROIC_FLATPAK_APP_ID
+            ):
+                raise RequestValidationError("malformed")
+            uri = filtered_launch_options[2]
             return replace(_parse_heroic_uri(uri), source="flatpak")
 
-        if normalized.flatpak_app_id is not None or not _is_heroic_executable(
-            executable
+        if (
+            normalized.flatpak_app_id is not None
+            or executable is None
+            or not _is_heroic_executable(executable)
         ):
             raise RequestValidationError("malformed")
         if len(normalized.launch_option_tokens) != 1:
@@ -552,8 +584,14 @@ def _select_payload(
     return selected
 
 
-def _single_literal_absolute_path(value: str | None) -> Path:
-    if value is None:
+def _filter_option_tokens(tokens: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(token for token in tokens if not token.startswith("-"))
+
+
+def _unquoted_string(value: str | None) -> str:
+    if value is None or not value or len(value) > 4096:
+        raise RequestValidationError("malformed")
+    if "\x00" in value:
         raise RequestValidationError("malformed")
     candidate = value
     if candidate.startswith(("'", '"')):
@@ -565,7 +603,11 @@ def _single_literal_absolute_path(value: str | None) -> Path:
             raise RequestValidationError("malformed")
     elif any(character.isspace() for character in candidate):
         raise RequestValidationError("malformed")
-    return _absolute_payload_path(candidate)
+    return candidate
+
+
+def _single_literal_absolute_path(value: str | None) -> Path:
+    return _absolute_payload_path(_unquoted_string(value))
 
 
 def _absolute_payload_path(value: object) -> Path:
