@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import os
 import re
 import stat
 import subprocess
@@ -101,6 +102,26 @@ _FLATPAK_INFO_TIMEOUT_SECONDS = 0.25
 DirectPayloadType = Literal["windows", "appimage", "native"]
 
 
+def host_subprocess_env() -> dict[str, str]:
+    """
+    Environment for host binaries we shell out to.
+
+    Decky Loader ships as a PyInstaller bundle and puts its own extracted library
+    directory on `LD_LIBRARY_PATH` for everything the plugin spawns. System
+    binaries then link Decky's bundled OpenSSL instead of `/usr/lib`, and fail to
+    start with a bare non-zero exit and no output. PyInstaller stashes the
+    pre-launch value in `LD_LIBRARY_PATH_ORIG`, so restore that when present and
+    drop the variable entirely otherwise.
+    """
+    env = dict(os.environ)
+    original = env.pop("LD_LIBRARY_PATH_ORIG", None)
+    if original:
+        env["LD_LIBRARY_PATH"] = original
+    else:
+        env.pop("LD_LIBRARY_PATH", None)
+    return env
+
+
 def _run_flatpak_info(app_id: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ("flatpak", "info", "--show-location", app_id),
@@ -109,6 +130,7 @@ def _run_flatpak_info(app_id: str) -> subprocess.CompletedProcess[str]:
         check=False,
         timeout=_FLATPAK_INFO_TIMEOUT_SECONDS,
         text=True,
+        env=host_subprocess_env(),
     )
 
 

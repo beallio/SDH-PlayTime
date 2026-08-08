@@ -5,6 +5,7 @@ import subprocess
 import threading
 import time
 import unittest
+import unittest.mock
 from pathlib import Path
 from collections.abc import Callable
 
@@ -16,6 +17,7 @@ from py_modules.game_resolution import (
     MountEntry,
     MAX_RESOLUTION_BATCH_SIZE,
 )
+from py_modules.game_resolution.direct import host_subprocess_env
 from py_modules.game_resolution.models import ResolutionRequest, ResolutionResult
 
 
@@ -673,3 +675,37 @@ class GameResolutionCoordinatorTest(unittest.TestCase):
 
         self.assertEqual(result.payload_status, "reachable")
         self.assertEqual(result.metadata_status, "not_requested")
+
+    def test_host_subprocess_env_restores_pyinstaller_library_path(self) -> None:
+        # Decky ships as a PyInstaller bundle and points LD_LIBRARY_PATH at its own
+        # extracted libraries, which breaks every host binary we shell out to.
+        with unittest.mock.patch.dict(
+            os.environ,
+            {
+                "LD_LIBRARY_PATH": "/tmp/_MEIabc123",
+                "LD_LIBRARY_PATH_ORIG": "/usr/lib:/usr/local/lib",
+            },
+            clear=False,
+        ):
+            env = host_subprocess_env()
+
+        self.assertEqual(env["LD_LIBRARY_PATH"], "/usr/lib:/usr/local/lib")
+        self.assertNotIn("LD_LIBRARY_PATH_ORIG", env)
+
+    def test_host_subprocess_env_drops_library_path_without_original(self) -> None:
+        with unittest.mock.patch.dict(
+            os.environ, {"LD_LIBRARY_PATH": "/tmp/_MEIabc123"}, clear=False
+        ):
+            os.environ.pop("LD_LIBRARY_PATH_ORIG", None)
+            env = host_subprocess_env()
+
+        self.assertNotIn("LD_LIBRARY_PATH", env)
+
+    def test_host_subprocess_env_preserves_unrelated_variables(self) -> None:
+        with unittest.mock.patch.dict(
+            os.environ, {"HOME": "/home/deck", "PATH": "/usr/bin"}, clear=False
+        ):
+            env = host_subprocess_env()
+
+        self.assertEqual(env["HOME"], "/home/deck")
+        self.assertEqual(env["PATH"], "/usr/bin")
