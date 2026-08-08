@@ -144,6 +144,9 @@ type RuntimeTestFixtures = {
 		deckDesktopApps?: {
 			apps: Map<number, TestDeckDesktopApp>;
 		};
+		localGamesCollection?: {
+			allApps: Array<{ appid: number }>;
+		};
 	};
 	SteamClient?: {
 		Apps?: {
@@ -1590,11 +1593,17 @@ describe("buildGamePresenceSnapshot", () => {
 		});
 	});
 
-	test("falls back to appStore per_client_data install metadata when direct probe is unavailable", async () => {
+	test("reports a native game as not installed when absent from localGamesCollection", async () => {
 		backendCallHandler = async (method: unknown) => {
 			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
 				return [
-					{ game: { id: "10", name: "Native Runtime Game" }, duration: 12 },
+					{
+						game: {
+							id: "32430",
+							name: "STAR WARS: The Force Unleashed",
+						},
+						duration: 12,
+					},
 				];
 			}
 			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
@@ -1607,16 +1616,19 @@ describe("buildGamePresenceSnapshot", () => {
 			appStore: {
 				allApps: [
 					{
-						appid: 10,
-						display_name: "Native Runtime Game",
+						appid: 32430,
+						display_name: "STAR WARS: The Force Unleashed",
 						app_type: 0,
 						per_client_data: [{ is_available_on_current_platform: true }],
 					},
 				],
 			},
+			collectionStore: {
+				localGamesCollection: { allApps: [] },
+			},
 		});
 
-		const reachableSnapshot = await refreshCurrentGamePresenceSnapshot({
+		const snapshot = await refreshCurrentGamePresenceSnapshot({
 			getAppDetails: async () => {
 				return {
 					status: "failure",
@@ -1625,27 +1637,49 @@ describe("buildGamePresenceSnapshot", () => {
 			},
 		});
 
-		expect(reachableSnapshot.candidates).toHaveLength(1);
-		expect(reachableSnapshot.candidates[0]?.availability).toEqual({
-			status: "reachable",
-			reasons: [],
-			label: "Installed",
+		expect(snapshot.candidates).toHaveLength(1);
+		expect(snapshot.candidates[0]?.availability).toEqual({
+			status: "unreachable",
+			reasons: [{ code: "native_not_installed", source: "native_steam" }],
 		});
+	});
+
+	test("reports a native game as installed when present in localGamesCollection", async () => {
+		backendCallHandler = async (method: unknown) => {
+			if (method === BACK_END_API.GET_ASSOCIATION_CANDIDATES) {
+				return [
+					{
+						game: {
+							id: "32430",
+							name: "STAR WARS: The Force Unleashed",
+						},
+						duration: 12,
+					},
+				];
+			}
+			if (method === BACK_END_API.RESOLVE_GAME_PAYLOADS) {
+				return { results: [reachableResult()], error: null };
+			}
+			throw new Error(`unexpected write or read RPC: ${String(method)}`);
+		};
 
 		setRuntimeFixtures({
 			appStore: {
 				allApps: [
 					{
-						appid: 10,
-						display_name: "Native Runtime Game",
+						appid: 32430,
+						display_name: "STAR WARS: The Force Unleashed",
 						app_type: 0,
-						per_client_data: [{ is_available_on_current_platform: false }],
+						per_client_data: [{ is_available_on_current_platform: true }],
 					},
 				],
 			},
+			collectionStore: {
+				localGamesCollection: { allApps: [{ appid: 32430 }] },
+			},
 		});
 
-		const unreachableSnapshot = await refreshCurrentGamePresenceSnapshot({
+		const snapshot = await refreshCurrentGamePresenceSnapshot({
 			getAppDetails: async () => {
 				return {
 					status: "failure",
@@ -1654,10 +1688,11 @@ describe("buildGamePresenceSnapshot", () => {
 			},
 		});
 
-		expect(unreachableSnapshot.candidates).toHaveLength(1);
-		expect(unreachableSnapshot.candidates[0]?.availability).toEqual({
-			status: "unreachable",
-			reasons: [{ code: "native_not_installed", source: "native_steam" }],
+		expect(snapshot.candidates).toHaveLength(1);
+		expect(snapshot.candidates[0]?.availability).toEqual({
+			status: "reachable",
+			reasons: [],
+			label: "Installed",
 		});
 	});
 

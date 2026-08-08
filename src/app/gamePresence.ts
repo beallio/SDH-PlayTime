@@ -153,9 +153,6 @@ type RuntimeAppStoreGame = {
 	app_type?: number;
 	installed?: boolean;
 	is_installed?: boolean;
-	per_client_data?: Array<{
-		is_available_on_current_platform?: boolean;
-	}>;
 };
 
 const sourceOrder: readonly GamePresenceSource[] = [
@@ -891,41 +888,51 @@ function runtimeNativeInstallProbe(): NativeInstallProbe | undefined {
 		appStore?: {
 			allApps?: RuntimeAppStoreGame[];
 		};
+		collectionStore?: {
+			localGamesCollection?: {
+				allApps?: Array<{ appid: number }>;
+			};
+		};
 	};
 	const probe = runtime.SteamClient?.Apps?.BIsAppInstalled;
 	if (typeof probe !== "function") {
-		if (!runtime.appStore || !Array.isArray(runtime.appStore.allApps)) {
+		const appStoreGames = Array.isArray(runtime.appStore?.allApps)
+			? runtime.appStore.allApps
+			: undefined;
+		const localGameAppIds = Array.isArray(
+			runtime.collectionStore?.localGamesCollection?.allApps,
+		)
+			? new Set(
+					runtime.collectionStore.localGamesCollection.allApps.map(
+						(app) => app.appid,
+					),
+				)
+			: undefined;
+		if (!appStoreGames && !localGameAppIds) {
 			return;
 		}
 
 		return (appId: number) => {
-			const app = runtime.appStore?.allApps?.find(
+			const app = appStoreGames?.find(
 				(game) =>
 					game.appid === appId || game.appid === toSteamCallbackAppId(appId),
 			);
-			if (!app) {
-				return { status: "unknown" };
-			}
-			if (typeof app.installed === "boolean") {
+			if (typeof app?.installed === "boolean") {
 				return { status: app.installed ? "installed" : "not_installed" };
 			}
-			if (typeof app.is_installed === "boolean") {
+			if (typeof app?.is_installed === "boolean") {
 				return {
 					status: app.is_installed ? "installed" : "not_installed",
 				};
 			}
-			const primaryClientData = app.per_client_data?.[0];
-			if (primaryClientData && typeof primaryClientData === "object") {
-				const isAvailable =
-					typeof primaryClientData.is_available_on_current_platform ===
-					"boolean";
-				if (isAvailable) {
-					return {
-						status: primaryClientData.is_available_on_current_platform
+			if (localGameAppIds) {
+				return {
+					status:
+						localGameAppIds.has(appId) ||
+						localGameAppIds.has(toSteamCallbackAppId(appId))
 							? "installed"
 							: "not_installed",
-					};
-				}
+				};
 			}
 			return { status: "unknown" };
 		};
