@@ -17,7 +17,6 @@ import {
 import { GameCoverStyle } from "@src/components/GameCard";
 import logger from "@src/utils/logger";
 import { Navigation, ScrollPanelGroup } from "@decky/ui";
-import { FaHeart } from "react-icons/fa";
 import { GAME_REPORT_ROUTE, navigateToPage } from "./navigation";
 import {
 	GAMEPAD_BUTTON_B,
@@ -168,7 +167,7 @@ export function ReplayPage({ year }: { year?: number }) {
 						</p>
 
 						<p className="replay-footer-credits">
-							With <FaHeart className="replay-footer-heart" /> by ynhhoJ
+							A community remix of PlayTime by ynhhoJ.
 						</p>
 					</div>
 				</div>
