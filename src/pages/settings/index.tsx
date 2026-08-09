@@ -41,8 +41,8 @@ import {
 	getDefaultReplayYear,
 	getAvailableReplayYears,
 } from "@src/app/replay.constants";
+import { GITHUB_URL, changelogUrlForVersion } from "@src/app/links";
 import logger from "@src/utils/logger";
-const GITHUB_URL = "https://github.com/0u73r-h34v3n/SDH-PlayTime";
 
 const SCALE_OPTIONS = [
 	0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2,
@@ -459,7 +459,7 @@ function GeneralIcon() {
 	);
 }
 
-const CHANGELOG_URL = `${GITHUB_URL}/blob/master/CHANGELOG.md`;
+const CHANGELOG_URL = changelogUrlForVersion(PLUGIN_VERSION);
 
 const linkButtonStyle = {
 	display: "flex",
