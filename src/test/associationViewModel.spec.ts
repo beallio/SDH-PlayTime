@@ -346,31 +346,57 @@ describe("association view model", () => {
 	test("groups confirmed parents once, retains child actions, and routes parent removal through confirmation", () => {
 		const associations: GameAssociation[] = [
 			{
-				parentGameId: "parent",
-				parentGameName:
-					"A very long duplicate parent label that must remain data, not identity",
-				childGameId: "child-one",
-				childGameName: "Duplicate name",
+				parentGameId: "zulu-parent",
+				parentGameName: "Zulu parent",
+				childGameId: "zulu-child",
+				childGameName: "Zulu child",
 			},
 			{
-				parentGameId: "parent",
-				parentGameName:
-					"A very long duplicate parent label that must remain data, not identity",
-				childGameId: "child-two",
-				childGameName: "Duplicate name",
+				parentGameId: "zulu-parent",
+				parentGameName: "Zulu parent",
+				childGameId: "alpha-child",
+				childGameName: "Alpha child",
+			},
+			{
+				parentGameId: "alpha-parent",
+				parentGameName: "Alpha parent",
+				childGameId: "alpha-zulu-child",
+				childGameName: "Zulu child",
+			},
+			{
+				parentGameId: "alpha-parent",
+				parentGameName: "Alpha parent",
+				childGameId: "alpha-alpha-child",
+				childGameName: "Alpha child",
 			},
 		];
 		const groups = buildAssociationListGroups(associations, [
-			candidate("parent", "reachable"),
-			candidate("child-one", "reachable"),
-			candidate("child-two", "unknown"),
+			candidate("zulu-parent", "reachable", { name: "Zulu parent" }),
+			candidate("alpha-parent", "reachable", { name: "Alpha parent" }),
+			candidate("zulu-child", "reachable", { name: "Zulu child" }),
+			candidate("alpha-child", "unknown", { name: "Alpha child" }),
+			candidate("alpha-zulu-child", "reachable", { name: "Zulu child" }),
+			candidate("alpha-alpha-child", "unknown", { name: "Alpha child" }),
 		]);
 
-		expect(groups).toHaveLength(1);
+		expect(groups).toHaveLength(2);
+		expect(groups.map((group) => group.anchorGameId)).toEqual([
+			"alpha-parent",
+			"zulu-parent",
+		]);
 		expect(groups[0]).toMatchObject({
-			anchorGameId: "parent",
-			parent: { id: "parent", availabilityLabel: "Available on this Deck" },
-			children: [{ id: "child-one" }, { id: "child-two" }],
+			parent: {
+				id: "alpha-parent",
+				availabilityLabel: "Available on this Deck",
+			},
+			children: [{ id: "alpha-alpha-child" }, { id: "alpha-zulu-child" }],
+		});
+		expect(groups[1]).toMatchObject({
+			parent: {
+				id: "zulu-parent",
+				availabilityLabel: "Available on this Deck",
+			},
+			children: [{ id: "alpha-child" }, { id: "zulu-child" }],
 		});
 		expect(getAssociationActionDecision("detach-child")).toEqual({
 			action: "detach",
@@ -384,12 +410,12 @@ describe("association view model", () => {
 			action: "dissolve",
 			removesExplicitEdges: true,
 		});
-		expect(getAssociationContextMenuAction("parent")).toEqual({
+		expect(getAssociationContextMenuAction("zulu-parent")).toEqual({
 			...getAssociationActionDecision("change-parent"),
-			anchorGameId: "parent",
+			anchorGameId: "zulu-parent",
 		});
-		expect(getAssociationContextMenuAction("parent")).toEqual(
-			getAssociationListChangeParentAction("parent"),
+		expect(getAssociationContextMenuAction("zulu-parent")).toEqual(
+			getAssociationListChangeParentAction("zulu-parent"),
 		);
 	});
 });
