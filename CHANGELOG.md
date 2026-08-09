@@ -13,6 +13,13 @@ Recommendation: for ease of reading, use the following order:
 - Changed
 - Fixed
 -->
+## [3.3.1-beallio.12] - 2026-08-08
+
+### Fixed
+- Non-Steam games launched through the Heroic Games Launcher now show as available on the Deck instead of "Status unavailable". Steam Deck's browser parses `heroic://launch` URIs differently from the environment the tests run in, which made every Heroic shortcut fail classification on device.
+- Non-Steam games launched directly through a Proton prefix — shortcuts whose launch options are environment assignments followed by `%command%` — now resolve instead of reporting "Status unavailable".
+- Steam games you own but have not installed no longer report as "Installed". Install state now comes from Steam's local games collection rather than from a field that only says the game runs on this platform.
+
 ## [3.3.1-beallio.11] - 2026-08-08
 
 ### Changed

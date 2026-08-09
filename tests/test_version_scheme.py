@@ -87,7 +87,7 @@ class VersionSchemeTests(unittest.TestCase):
                 self.assertEqual(semver_precedence(a, b), expected)
 
     def test_manifest_versions_agree(self) -> None:
-        self.assertEqual(manifest_version(), "3.3.1-beallio.11")
+        self.assertEqual(manifest_version(), "3.3.1-beallio.12")
 
     def test_manifest_version_carries_no_build_metadata(self) -> None:
         self.assertNotIn(
@@ -106,7 +106,7 @@ class VersionSchemeTests(unittest.TestCase):
         version = manifest_version()
         nightly = f"{version}.dev.20260808.g1a2b3c4"
         self.assertEqual(semver_precedence(nightly, version), 1)
-        self.assertEqual(semver_precedence("3.3.1-beallio.12", nightly), 1)
+        self.assertEqual(semver_precedence("3.3.1-beallio.13", nightly), 1)
 
 
 if __name__ == "__main__":
