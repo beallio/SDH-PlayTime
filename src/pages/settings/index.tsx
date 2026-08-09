@@ -484,7 +484,8 @@ const AboutSection = () => {
 				>
 					<p style={{ margin: 0, color: "#8b929a" }}>
 						Version {PLUGIN_VERSION}
-						<br />A community remix of PlayTime by ynhhoJ.
+						<br />
+						PlayTime by ynhhoJ · remixed by beallio
 						<br />
 						Upstream: 0u73r-h34v3n/SDH-PlayTime
 					</p>

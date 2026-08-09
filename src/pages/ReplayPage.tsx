@@ -160,16 +160,6 @@ export function ReplayPage({ year }: { year?: number }) {
 						year={replayData.summary.year}
 						handleGameClick={handleGameClick}
 					/>
-
-					<div className="replay-footer">
-						<p className="replay-footer-text">
-							Made with care for your gaming workflow.
-						</p>
-
-						<p className="replay-footer-credits">
-							A community remix of PlayTime by ynhhoJ.
-						</p>
-					</div>
 				</div>
 			</ScrollPanelGroup>
 		</PageWrapper>
