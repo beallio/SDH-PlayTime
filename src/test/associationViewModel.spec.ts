@@ -12,6 +12,7 @@ import {
 	buildAssociationConfirmationRequest,
 	buildAssociationConfirmationSummary,
 	buildAssociationListGroups,
+	compareByGameName,
 	getAssociationAdditionDecision,
 	getAssociationActionDecision,
 	getAssociationComponentCandidates,
@@ -59,6 +60,39 @@ const snapshot: AssociationComponentSnapshot = {
 };
 
 describe("association view model", () => {
+	test("sorts cards by displayed name", () => {
+		const cards = [
+			{ title: "Zelda", id: "z" },
+			{ title: "Animal Crossing", id: "a" },
+		];
+
+		expect(cards.sort(compareByGameName).map((card) => card.title)).toEqual([
+			"Animal Crossing",
+			"Zelda",
+		]);
+	});
+
+	test("uses localeCompare for mixed-case names", () => {
+		expect(
+			compareByGameName(
+				{ title: "alpha", id: "alpha" },
+				{ title: "Beta", id: "beta" },
+			),
+		).toBeLessThan(0);
+	});
+
+	test("uses game ID as a deterministic duplicate-name tiebreak", () => {
+		const cards = [
+			{ title: "Transformers Devastation", id: "3843090730" },
+			{ title: "Transformers Devastation", id: "3015223078" },
+		];
+
+		expect(cards.sort(compareByGameName).map((card) => card.id)).toEqual([
+			"3015223078",
+			"3843090730",
+		]);
+	});
+
 	test("keeps duplicate names distinguishable and preserves launcher and resolver evidence", () => {
 		const cards = buildAssociationCandidateCards({
 			candidates: [

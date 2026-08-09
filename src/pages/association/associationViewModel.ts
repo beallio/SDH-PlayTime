@@ -238,6 +238,14 @@ export function buildAssociationCandidateCards({
 	}));
 }
 
+export function compareByGameName(
+	left: { title: string; id: string },
+	right: { title: string; id: string },
+): number {
+	const byName = left.title.localeCompare(right.title);
+	return byName !== 0 ? byName : left.id.localeCompare(right.id);
+}
+
 /** Only a backend-confirmed parent or unambiguous evidence may preselect a parent. */
 export function selectInitialAssociationParent(input: AssociationRankingInput) {
 	const ranking = rankAssociationParent(input);
