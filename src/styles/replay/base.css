@@ -6,6 +6,8 @@
 	gap: 20px;
 	min-height: 100vh;
 	padding: 16px;
+	/* The removed footer used to supply the gap above the on-screen controls. */
+	padding-bottom: 2rem;
 }
 
 /* Sections */
