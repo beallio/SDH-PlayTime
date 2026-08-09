@@ -99,7 +99,24 @@ _FLATPAK_APP_ID_CHARACTERS = frozenset(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._+"
 )
 _FLATPAK_INFO_TIMEOUT_SECONDS = 0.25
+_ENVIRONMENT_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 DirectPayloadType = Literal["windows", "appimage", "native"]
+
+
+def _direct_launch_options_accepted(tokens: tuple[str, ...]) -> bool:
+    """Return True for zero or more env assignments, then one %command%, then any args.
+
+    An empty tuple is accepted: a shortcut with no launch options at all is the
+    pre-existing supported shape.
+    """
+    if not tokens:
+        return True
+    index = 0
+    while index < len(tokens) and _ENVIRONMENT_ASSIGNMENT.match(tokens[index]):
+        index += 1
+    if index >= len(tokens) or tokens[index] != "%command%":
+        return False
+    return "%command%" not in tokens[index + 1 :]
 
 
 def host_subprocess_env() -> dict[str, str]:
@@ -295,9 +312,17 @@ class DirectExecutableAdapter:
         if (
             normalized.flatpak_app_id is not None
             or normalized.executable_tokens != (candidate,)
-            or normalized.command_tokens != (candidate,)
-            or normalized.launch_option_tokens
-            or normalized.shortcut_launch_options is not None
+            or normalized.command_tokens
+            != (candidate, *normalized.launch_option_tokens)
+            or not _direct_launch_options_accepted(normalized.launch_option_tokens)
+            or (
+                normalized.shortcut_launch_options is None
+                and normalized.launch_option_tokens
+            )
+            or (
+                normalized.shortcut_launch_options
+                and not normalized.launch_option_tokens
+            )
             or normalized.start_dir_tokens
             != (() if start_directory is None else (start_directory,))
         ):

@@ -87,6 +87,70 @@ class SteamShortcutCatalogTest(unittest.TestCase):
             outcome.request.normalized.executable_tokens, ("/games/Verified Game.exe",)
         )
 
+    def test_binds_an_env_prefixed_direct_request_to_its_shortcuts_vdf_record(
+        self,
+    ) -> None:
+        executable = (
+            '"/run/media/deck/sdcard_1tb/heroic/prefixes/default/'
+            'Transformers Fall of Cybertron/drive_c/Program Files (x86)/'
+            'Transformers Fall of Cybertron/Binaries/TFOC.exe"'
+        )
+        launch_options = (
+            'STEAM_COMPAT_DATA_PATH="/run/media/deck/sdcard_1tb/heroic/'
+            'prefixes/default/Transformers Fall of Cybertron" %command%'
+        )
+        app_name = "Transformers Fall of Cybertron"
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            write_shortcuts(
+                home / ".local/share/Steam/userdata/123/config/shortcuts.vdf",
+                [
+                    {
+                        "appname": app_name,
+                        "exe": executable,
+                        "launchoptions": launch_options,
+                    }
+                ],
+            )
+
+            outcome = SteamShortcutCatalog(home, lambda: "123").get_request(
+                shortcut_app_id(executable, app_name)
+            )
+
+        self.assertIsNotNone(outcome.request)
+        assert outcome.request is not None
+        self.assertEqual(outcome.request.launcher_kind, "direct")
+        self.assertEqual(
+            outcome.request.normalized.launch_option_tokens,
+            (
+                "STEAM_COMPAT_DATA_PATH=/run/media/deck/sdcard_1tb/heroic/"
+                "prefixes/default/Transformers Fall of Cybertron",
+                "%command%",
+            ),
+        )
+
+    def test_rejects_a_non_assignment_direct_shortcuts_vdf_record(self) -> None:
+        executable = '"/games/Flag Game.exe"'
+        app_name = "Flag Game"
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            write_shortcuts(
+                home / ".local/share/Steam/userdata/123/config/shortcuts.vdf",
+                [
+                    {
+                        "appname": app_name,
+                        "exe": executable,
+                        "launchoptions": "--flag %command%",
+                    }
+                ],
+            )
+
+            outcome = SteamShortcutCatalog(home, lambda: "123").get_request(
+                shortcut_app_id(executable, app_name)
+            )
+
+        self.assertIsNone(outcome.request)
+
     def test_binds_a_nonheroic_flatpak_request_to_matching_shortcuts_records(
         self,
     ) -> None:
