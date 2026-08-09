@@ -13,6 +13,14 @@ Recommendation: for ease of reading, use the following order:
 - Changed
 - Fixed
 -->
+## [3.3.1-beallio.13] - 2026-08-09
+
+### Changed
+- Game Management now shows each section's explanation inside the same box as its button, instead of in a separate block underneath.
+- About shows the installed plugin version and credits both the original author and this remix. The GitHub and changelog links point at the remix repository, and the changelog opens the release notes for the version you are running.
+- Game Associations lists are sorted by game name — both the existing groups (and the games within each group) and the list of games you can pick when creating an association. Games sharing a name keep a stable order.
+- The Annual Replay page no longer ends with a footer.
+
 ## [3.3.1-beallio.12] - 2026-08-08
 
 ### Fixed

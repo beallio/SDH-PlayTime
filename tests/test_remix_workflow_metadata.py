@@ -83,10 +83,10 @@ class RemixWorkflowMetadataTests(unittest.TestCase):
             {
                 "GITHUB_EVENT_NAME": "push",
                 "GITHUB_REF_TYPE": "tag",
-                "GITHUB_REF_NAME": "v3.3.1-beallio.12",
+                "GITHUB_REF_NAME": "v3.3.1-beallio.13",
             },
-            "3.3.1-beallio.12",
-            "SDH-PlayTime-beallio-remix-v3.3.1-beallio.12.zip",
+            "3.3.1-beallio.13",
+            "SDH-PlayTime-beallio-remix-v3.3.1-beallio.13.zip",
         )
 
     def test_push_derives_date_stamped_nightly_metadata(self) -> None:
@@ -103,8 +103,8 @@ class RemixWorkflowMetadataTests(unittest.TestCase):
         self.assertIn(
             outputs.get("version"),
             {
-                f"3.3.1-beallio.12.dev.{before}.g1a2b3c4",
-                f"3.3.1-beallio.12.dev.{after}.g1a2b3c4",
+                f"3.3.1-beallio.13.dev.{before}.g1a2b3c4",
+                f"3.3.1-beallio.13.dev.{after}.g1a2b3c4",
             },
         )
         self.assertEqual(
@@ -121,8 +121,8 @@ class RemixWorkflowMetadataTests(unittest.TestCase):
         self.assertIn(
             outputs.get("version"),
             {
-                f"3.3.1-beallio.12.dev.{before}.g1a2b3c4",
-                f"3.3.1-beallio.12.dev.{after}.g1a2b3c4",
+                f"3.3.1-beallio.13.dev.{before}.g1a2b3c4",
+                f"3.3.1-beallio.13.dev.{after}.g1a2b3c4",
             },
         )
         self.assertEqual(
@@ -133,8 +133,8 @@ class RemixWorkflowMetadataTests(unittest.TestCase):
     def test_manual_dispatch_derives_stable_release_metadata(self) -> None:
         self.assert_successful_outputs(
             {"GITHUB_EVENT_NAME": "workflow_dispatch", "DISPATCH_VERSION": ""},
-            "3.3.1-beallio.12",
-            "SDH-PlayTime-beallio-remix-manual-3.3.1-beallio.12.zip",
+            "3.3.1-beallio.13",
+            "SDH-PlayTime-beallio-remix-manual-3.3.1-beallio.13.zip",
         )
 
     def test_tag_version_must_match_the_manifests(self) -> None:
