@@ -535,39 +535,24 @@ export function SettingsPage() {
 				<Tab>
 					<PanelSection title="Game Tracking Status">
 						<PanelSectionRow>
-							<ButtonItem onClick={() => navigateToPage(TRACKING_LIST_ROUTE)}>
+							<ButtonItem
+								description="Control which games are tracked and shown in statistics."
+								onClick={() => navigateToPage(TRACKING_LIST_ROUTE)}
+							>
 								Manage Tracking Status
 							</ButtonItem>
 						</PanelSectionRow>
-						<div
-							style={{
-								padding: "8px 0",
-								color: "#8b929a",
-								fontSize: "12px",
-							}}
-						>
-							Control which games are tracked and shown in statistics.
-						</div>
 					</PanelSection>
 
 					<PanelSection title="Game Associations">
 						<PanelSectionRow>
 							<ButtonItem
+								description="Associate games to combine their playtime statistics. Useful for games that have multiple versions or platforms."
 								onClick={() => navigateToPage(ASSOCIATION_LIST_ROUTE)}
 							>
 								Manage Game Associations
 							</ButtonItem>
 						</PanelSectionRow>
-						<div
-							style={{
-								padding: "8px 0",
-								color: "#8b929a",
-								fontSize: "12px",
-							}}
-						>
-							Associate games to combine their playtime statistics. Useful for
-							games that have multiple versions or platforms.
-						</div>
 					</PanelSection>
 				</Tab>
 			),
