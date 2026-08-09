@@ -21,6 +21,7 @@ import {
 	type PlayTimeSettings,
 	type VibrantSwatch,
 	type WeekStartDay,
+	PLUGIN_VERSION,
 } from "@src/app/settings";
 import { Tab } from "@src/components/Tab";
 import { useLocator } from "@src/locator";
@@ -33,7 +34,7 @@ import {
 	ASSOCIATION_LIST_ROUTE,
 } from "@src/pages/navigation";
 import { BsFileBinary, BsInfoCircle } from "react-icons/bs";
-import { FaGithub, FaHeart, FaCalendarAlt } from "react-icons/fa";
+import { FaGithub, FaCalendarAlt } from "react-icons/fa";
 import { IoMdOptions } from "react-icons/io";
 import { navigateToReplay } from "@src/pages/navigation";
 import {
@@ -481,10 +482,11 @@ const AboutSection = () => {
 						lineHeight: "1.5",
 					}}
 				>
-					<p style={{ margin: 0, color: "#8b929a", textAlign: "center" }}>
-						With{" "}
-						<FaHeart style={{ color: "#ff6b6b", verticalAlign: "middle" }} /> by
-						ynhhoJ
+					<p style={{ margin: 0, color: "#8b929a" }}>
+						Version {PLUGIN_VERSION}
+						<br />A community remix of PlayTime by ynhhoJ.
+						<br />
+						Upstream: 0u73r-h34v3n/SDH-PlayTime
 					</p>
 				</div>
 			</PanelSection>
