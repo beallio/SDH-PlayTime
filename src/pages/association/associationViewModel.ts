@@ -238,6 +238,14 @@ export function buildAssociationCandidateCards({
 	}));
 }
 
+export function compareByGameName(
+	left: { title: string; id: string },
+	right: { title: string; id: string },
+): number {
+	const byName = left.title.localeCompare(right.title);
+	return byName !== 0 ? byName : left.id.localeCompare(right.id);
+}
+
 /** Only a backend-confirmed parent or unambiguous evidence may preselect a parent. */
 export function selectInitialAssociationParent(input: AssociationRankingInput) {
 	const ranking = rankAssociationParent(input);
@@ -385,36 +393,40 @@ export function buildAssociationListGroups(
 		children.push(association);
 		grouped.set(association.parentGameId, children);
 	}
-	return [...grouped.entries()].map(([parentGameId, children]) => {
-		const first = children[0] as GameAssociation;
-		const parent =
-			candidatesById.get(parentGameId) ??
-			fallbackCandidate({
-				gameId: parentGameId,
-				gameName: first.parentGameName,
-			});
-		return {
-			anchorGameId: parentGameId,
-			parent: buildAssociationCandidateCards({
-				candidates: [parent],
-				selectedParentId: parentGameId,
-				recommendedParentId: null,
-			})[0] as AssociationCandidateCard,
-			children: children.map((child) => {
-				const candidate =
-					candidatesById.get(child.childGameId) ??
-					fallbackCandidate({
-						gameId: child.childGameId,
-						gameName: child.childGameName,
-					});
-				return buildAssociationCandidateCards({
-					candidates: [candidate],
-					selectedParentId: null,
+	return [...grouped.entries()]
+		.map(([parentGameId, children]) => {
+			const first = children[0] as GameAssociation;
+			const parent =
+				candidatesById.get(parentGameId) ??
+				fallbackCandidate({
+					gameId: parentGameId,
+					gameName: first.parentGameName,
+				});
+			return {
+				anchorGameId: parentGameId,
+				parent: buildAssociationCandidateCards({
+					candidates: [parent],
+					selectedParentId: parentGameId,
 					recommendedParentId: null,
-				})[0] as AssociationCandidateCard;
-			}),
-		};
-	});
+				})[0] as AssociationCandidateCard,
+				children: children
+					.map((child) => {
+						const candidate =
+							candidatesById.get(child.childGameId) ??
+							fallbackCandidate({
+								gameId: child.childGameId,
+								gameName: child.childGameName,
+							});
+						return buildAssociationCandidateCards({
+							candidates: [candidate],
+							selectedParentId: null,
+							recommendedParentId: null,
+						})[0] as AssociationCandidateCard;
+					})
+					.sort(compareByGameName),
+			};
+		})
+		.sort((left, right) => compareByGameName(left.parent, right.parent));
 }
 
 export type AssociationAction =

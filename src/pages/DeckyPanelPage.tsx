@@ -11,10 +11,10 @@ import {
 import { useEffect, useMemo } from "react";
 import { $lastOpenedPage } from "@src/stores/ui";
 import { getDefaultReplayYear } from "@src/app/replay.constants";
+import { PLUGIN_VERSION } from "@src/app/settings";
+import { changelogUrlForVersion } from "@src/app/links";
 import { useVersionCheck } from "@src/app/useVersionCheck";
 import { BsInfoCircle } from "react-icons/bs";
-
-const GITHUB_URL = "https://github.com/0u73r-h34v3n/SDH-PlayTime";
 
 const useShowReplayButton = (): { show: boolean; year: number } => {
 	return useMemo(() => {
@@ -37,7 +37,7 @@ const useShowReplayButton = (): { show: boolean; year: number } => {
 	}, []);
 };
 
-const CHANGELOG_URL = `${GITHUB_URL}/blob/master/CHANGELOG.md`;
+const CHANGELOG_URL = changelogUrlForVersion(PLUGIN_VERSION);
 
 export function DeckyPanelPage() {
 	const { show: showReplayButton, year: replayYear } = useShowReplayButton();

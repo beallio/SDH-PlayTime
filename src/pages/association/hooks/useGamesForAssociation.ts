@@ -14,6 +14,7 @@ import {
 	buildAssociationCandidateCards,
 	buildAssociationConfirmationRequest,
 	buildAssociationConfirmationSummary,
+	compareByGameName,
 	shouldRefreshAssociationComponent,
 } from "../associationViewModel";
 import {
@@ -193,7 +194,7 @@ export const useGamesForAssociation = (initialAnchorGameId: string | null) => {
 				candidates: trackedAnchorCandidates,
 				selectedParentId: null,
 				recommendedParentId: null,
-			}),
+			}).sort(compareByGameName),
 		[trackedAnchorCandidates],
 	);
 	const allMembersSelected = selectionState?.allMembersSelected ?? false;

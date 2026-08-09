@@ -21,6 +21,7 @@ import {
 	type PlayTimeSettings,
 	type VibrantSwatch,
 	type WeekStartDay,
+	PLUGIN_VERSION,
 } from "@src/app/settings";
 import { Tab } from "@src/components/Tab";
 import { useLocator } from "@src/locator";
@@ -33,15 +34,15 @@ import {
 	ASSOCIATION_LIST_ROUTE,
 } from "@src/pages/navigation";
 import { BsFileBinary, BsInfoCircle } from "react-icons/bs";
-import { FaGithub, FaHeart, FaCalendarAlt } from "react-icons/fa";
+import { FaGithub, FaCalendarAlt } from "react-icons/fa";
 import { IoMdOptions } from "react-icons/io";
 import { navigateToReplay } from "@src/pages/navigation";
 import {
 	getDefaultReplayYear,
 	getAvailableReplayYears,
 } from "@src/app/replay.constants";
+import { GITHUB_URL, changelogUrlForVersion } from "@src/app/links";
 import logger from "@src/utils/logger";
-const GITHUB_URL = "https://github.com/0u73r-h34v3n/SDH-PlayTime";
 
 const SCALE_OPTIONS = [
 	0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2,
@@ -458,7 +459,7 @@ function GeneralIcon() {
 	);
 }
 
-const CHANGELOG_URL = `${GITHUB_URL}/blob/master/CHANGELOG.md`;
+const CHANGELOG_URL = changelogUrlForVersion(PLUGIN_VERSION);
 
 const linkButtonStyle = {
 	display: "flex",
@@ -481,10 +482,11 @@ const AboutSection = () => {
 						lineHeight: "1.5",
 					}}
 				>
-					<p style={{ margin: 0, color: "#8b929a", textAlign: "center" }}>
-						With{" "}
-						<FaHeart style={{ color: "#ff6b6b", verticalAlign: "middle" }} /> by
-						ynhhoJ
+					<p style={{ margin: 0, color: "#8b929a" }}>
+						Version {PLUGIN_VERSION}
+						<br />A community remix of PlayTime by ynhhoJ.
+						<br />
+						Upstream: 0u73r-h34v3n/SDH-PlayTime
 					</p>
 				</div>
 			</PanelSection>
@@ -535,39 +537,24 @@ export function SettingsPage() {
 				<Tab>
 					<PanelSection title="Game Tracking Status">
 						<PanelSectionRow>
-							<ButtonItem onClick={() => navigateToPage(TRACKING_LIST_ROUTE)}>
+							<ButtonItem
+								description="Control which games are tracked and shown in statistics."
+								onClick={() => navigateToPage(TRACKING_LIST_ROUTE)}
+							>
 								Manage Tracking Status
 							</ButtonItem>
 						</PanelSectionRow>
-						<div
-							style={{
-								padding: "8px 0",
-								color: "#8b929a",
-								fontSize: "12px",
-							}}
-						>
-							Control which games are tracked and shown in statistics.
-						</div>
 					</PanelSection>
 
 					<PanelSection title="Game Associations">
 						<PanelSectionRow>
 							<ButtonItem
+								description="Associate games to combine their playtime statistics. Useful for games that have multiple versions or platforms."
 								onClick={() => navigateToPage(ASSOCIATION_LIST_ROUTE)}
 							>
 								Manage Game Associations
 							</ButtonItem>
 						</PanelSectionRow>
-						<div
-							style={{
-								padding: "8px 0",
-								color: "#8b929a",
-								fontSize: "12px",
-							}}
-						>
-							Associate games to combine their playtime statistics. Useful for
-							games that have multiple versions or platforms.
-						</div>
 					</PanelSection>
 				</Tab>
 			),
